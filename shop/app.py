@@ -5,7 +5,8 @@ ground-truth.yaml:
 
   used:      shop_http_requests_total, shop_http_request_duration_seconds,
              shop_cart_operations_total (but its user_id label is never used)
-  alert-only: shop_payment_queue_depth
+  alert-only: shop_payment_queue_depth (Prometheus alert),
+             shop_order_export_lag_seconds (Grafana-managed alert only)
   stale:     shop_legacy_* (on a dashboard nobody views)
   waste:     shop_cache_* (30 gauges x 16 shards), shop_feature_flag_evaluations_total,
              shop_cache_hits/requests_total (feed only an unused recording rule)
@@ -62,6 +63,10 @@ healthcheck_duration = Histogram(
 
 # --- alert-only -----------------------------------------------------------
 payment_queue = Gauge("shop_payment_queue_depth", "Payments waiting to be processed.")
+# Read ONLY by a Grafana-managed alert (grafana/provisioning/alerting): no
+# Prometheus rule, no dashboard. tvt must find it through Grafana's ruler API.
+order_export_lag = Gauge(
+    "shop_order_export_lag_seconds", "Seconds since orders were last exported to the warehouse.")
 
 # --- stale dashboard ------------------------------------------------------
 legacy_queue = Gauge("shop_legacy_queue_depth", "Legacy batch queue depth.")
@@ -192,6 +197,7 @@ def background_gauges():
     shards = [str(s) for s in range(16)]
     while True:
         payment_queue.set(max(0, random.gauss(20, 8)))
+        order_export_lag.set(max(0, random.gauss(90, 30)))
         legacy_queue.set(max(0, random.gauss(300, 50)))
         legacy_batch.set(max(1, random.gauss(42, 5)))
         for g in cache_gauges.values():
