@@ -30,6 +30,8 @@ Leave it running. tvt's confidence model wants **30 days** of history, and Prome
 
 On macOS, run `make autostart` once. It enables `podman-restart.service` in the Podman VM, so the containers come back whenever the VM boots, and installs a LaunchAgent that starts the VM at login. Sleep still pauses the VM and leaves gaps in the history, so keep the Mac awake while it's on power (System Settings > Battery > Options > "Prevent automatic sleeping when the display is off"). `make autostart-off` removes the LaunchAgent.
 
+To scan the lab with `tvt scan`, run `make export-logs` first. It copies the Prometheus query log and Grafana's file log (`grafana.log*`) into `./lab-logs` (gitignored) for `--prom-query-log` and `--grafana-log`.
+
 On Linux with SELinux enforcing, add `:Z` to the bind mounts in `compose.yaml`.
 
 ## Point tvt at it
@@ -56,8 +58,9 @@ For the Grafana API, create a Viewer service account under **Administration → 
 
 See [`ground-truth.yaml`](ground-truth.yaml). In short:
 
-- **Hard keeps:** `shop_http_requests_total` (error-rate alert), histogram buckets that feed a latency alert through a recording rule, the alert-only `shop_payment_queue_depth`, and the audit log stream (Loki alert).
+- **Hard keeps:** `shop_http_requests_total` (error-rate alert), histogram buckets that feed a latency alert through a recording rule, the alert-only `shop_payment_queue_depth`, the audit log stream (Loki alert), and `shop_order_export_lag_seconds`, which only a **Grafana-managed** alert reads (`grafana/provisioning/alerting/`). The Prometheus rules API can't see that last one.
 - **Used:** the Shop Overview panels, plus one ad hoc node-memory query.
+- **The /healthz scenario:** a simulated fleet of probers hits `/healthz` 30 times a second. Pass rate is tracked in metrics (panel 7), and every successful check is also logged into the same info stream as real traffic, where it makes up about 64% of the bytes. tvt should report that pattern with its cost and hand the line-level cut to [zeroreads](https://github.com/Bisman-Singh/zeroreads), not drop or reroute the stream. zeroreads can be pointed at the lab to prove the cut; panel 8 (log lines per second) is the value change it should respect. Loki's pattern ingester is on, so `curl -G localhost:3100/loki/api/v1/patterns --data-urlencode 'query={app="shop", component="api"}' --data-urlencode "start=$(date -v-1H +%s)"` shows the patterns.
 - **Waste:** 960 `shop_cache_*` series, high-cardinality feature-flag counters, `_created` series, a recording rule nobody uses, most node-exporter metrics, the `user_id` label on cart operations, and the debug log stream (about 88% of log bytes).
 
 ## Versions
