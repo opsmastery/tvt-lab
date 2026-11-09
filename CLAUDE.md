@@ -7,4 +7,5 @@ A Podman Compose Grafana stack seeded with known telemetry waste and known depen
 - Use fully qualified image names (`docker.io/...`) so Podman doesn't prompt for short-name resolution.
 - Grafana is plain HTTP on http://localhost:3000 (admin/admin).
 - The `viewer` service simulates browser views of the Shop Overview dashboard only. Legacy Queue must stay unviewed.
-- The /healthz scenario: successful health checks are logged into the same info/api stream as real traffic (about 64% of its bytes). Ground truth expects a line-level `filter_lines` recommendation, not a stream-level one. Loki's pattern ingester is enabled for this.
+- Grafana-managed alert: `shop_order_export_lag_seconds` is read only by the provisioned rule in `grafana/provisioning/alerting/shop-alerts.yml`. Ground truth expects it as hard_keep.
+- The /healthz scenario: successful health checks are logged into the same info/api stream as real traffic (about 64% of its bytes). Ground truth expects tvt to report the pattern and hand it to zeroreads (`line_handoff`), not to generate a line filter or touch the stream. Loki's pattern ingester is enabled for this.
