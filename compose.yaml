@@ -87,6 +87,7 @@ services:
     environment:
       LOKI_URL: http://loki:3100
       REQUESTS_PER_SECOND: "20"
+      HEALTHCHECKS_PER_SECOND: "30"   # /healthz scenario: probers x replicas
     depends_on: [loki]
     restart: unless-stopped
 
@@ -100,6 +101,7 @@ services:
       GRAFANA_URL: http://grafana:3000
       GRAFANA_AUTH: admin:admin
       PROM_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3100
       INTERVAL_SECONDS: "300"
     volumes:
       - ./viewer:/viewer:ro

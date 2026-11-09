@@ -3,7 +3,7 @@
   "title": "Shop Overview",
   "description": "Viewed regularly (tvt-lab viewer simulates this). Everything referenced here should be kept.",
   "schemaVersion": 41,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "tags": [
     "tvt-lab"
@@ -236,6 +236,73 @@
         "wrapLogMessage": true,
         "sortOrder": "Descending"
       }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Health check pass rate by probe",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (probe) (rate(shop_healthcheck_checks_total{result=\"success\"}[$__rate_interval])) / sum by (probe) (rate(shop_healthcheck_checks_total[$__rate_interval]))",
+          "legendFormat": "{{probe}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Shop log lines per second by level",
+      "description": "Counts every line in the stream. Dropping /healthz success lines lowers this panel's values without breaking it: tvt should flag it as a value change, not a blocker.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 34,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (level) (rate({app=\"shop\", component=\"api\"}[$__auto]))",
+          "legendFormat": "{{level}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
     }
   ]
 }

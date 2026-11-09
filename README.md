@@ -60,6 +60,7 @@ See [`ground-truth.yaml`](ground-truth.yaml). In short:
 
 - **Hard keeps:** `shop_http_requests_total` (error-rate alert), histogram buckets that feed a latency alert through a recording rule, the alert-only `shop_payment_queue_depth`, and the audit log stream (Loki alert).
 - **Used:** the Shop Overview panels, plus one ad hoc node-memory query.
+- **The /healthz scenario:** a simulated fleet of probers hits `/healthz` 30 times a second. Pass rate is tracked in metrics (panel 7), and every successful check is also logged into the same info stream as real traffic, where it makes up about 64% of the bytes. tvt should recommend filtering just those lines, not the stream, and it should flag panel 8 (log lines per second) as a value change. Loki's pattern ingester is on, so `curl -G localhost:3100/loki/api/v1/patterns --data-urlencode 'query={app="shop", component="api"}' --data-urlencode "start=$(date -v-1H +%s)"` shows the patterns.
 - **Waste:** 960 `shop_cache_*` series, high-cardinality feature-flag counters, `_created` series, a recording rule nobody uses, most node-exporter metrics, the `user_id` label on cart operations, and the debug log stream (about 88% of log bytes).
 
 ## Versions
