@@ -1,0 +1,5 @@
+# Alerts go nowhere; the lab only needs rules to exist and evaluate.
+route:
+  receiver: "null"
+receivers:
+  - name: "null"
