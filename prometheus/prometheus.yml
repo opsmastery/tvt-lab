@@ -1,0 +1,19 @@
+global:
+  # Deliberately fast. Dashboards use 5m-ish steps, so tvt should flag a
+  # "lower resolution" opportunity.
+  scrape_interval: 10s
+  evaluation_interval: 30s
+  # Spike 2: the Prometheus query log is off by default; this is the source of
+  # ad hoc and dashboard query evidence.
+  query_log_file: /prometheus/query.log
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_config_files:
+  - /etc/prometheus/scrape/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]

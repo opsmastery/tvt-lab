@@ -1,0 +1,39 @@
+groups:
+  - name: shop-recording
+    rules:
+      # Feeds ShopHighLatency below, so the histogram buckets are a transitive hard keep.
+      - record: route:shop_http_request_duration_seconds:p99_5m
+        expr: histogram_quantile(0.99, sum by (le, route) (rate(shop_http_request_duration_seconds_bucket[5m])))
+
+      # Feeds nothing: no alert, no dashboard. The rule and its inputs are waste.
+      - record: job:shop_cache_hit_ratio:5m
+        expr: sum by (job) (rate(shop_cache_hits_total[5m])) / sum by (job) (rate(shop_cache_requests_total[5m]))
+
+  - name: shop-alerts
+    rules:
+      - alert: ShopHighLatency
+        expr: route:shop_http_request_duration_seconds:p99_5m > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 latency on {{ $labels.route }} above 500ms"
+
+      - alert: ShopHighErrorRate
+        expr: |
+          sum(rate(shop_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(shop_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Shop 5xx ratio above 5%"
+
+      # Alert-only metric: on no dashboard and never queried, but must never be dropped.
+      - alert: ShopPaymentQueueBacklog
+        expr: shop_payment_queue_depth > 100
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Payment queue backlog"

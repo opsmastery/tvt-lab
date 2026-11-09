@@ -1,0 +1,12 @@
+# With auth disabled Loki's tenant is "fake", hence the directory name.
+groups:
+  - name: shop-audit
+    rules:
+      # Makes the audit stream a hard keep.
+      - alert: ShopAuditDenials
+        expr: sum(count_over_time({app="shop", component="audit"} |= "result=denied" [5m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Spike in denied actions in the shop audit log"

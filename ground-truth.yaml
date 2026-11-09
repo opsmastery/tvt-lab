@@ -1,0 +1,107 @@
+# What tvt should conclude about the lab, given 30+ days of history with the
+# viewer running. tvt's golden tests compare a scan of this lab against this file.
+#
+# Classes:
+#   hard_keep         never recommended (alert, recording rule feeding an alert, Loki alert)
+#   keep_high         on a viewed dashboard
+#   keep_medium       ad hoc queries only
+#   low               only on a dashboard nobody views
+#   drop_metric       no references: recommend dropping
+#   drop_label        metric is used, but this label is never matched, grouped or joined on
+#   drop_rule         recording rule with no consumers (recommend removing the rule)
+#   route_cold        log stream never queried: recommend cold storage over deletion
+#   lower_resolution  scrape interval is finer than any dashboard step uses
+
+metrics:
+  shop_http_requests_total:
+    class: hard_keep
+    why: ShopHighErrorRate alert; also Shop Overview panels 1-2 and the $route variable
+  shop_http_request_duration_seconds_bucket:
+    class: hard_keep
+    why: recording rule route:shop_http_request_duration_seconds:p99_5m feeds ShopHighLatency
+  shop_payment_queue_depth:
+    class: hard_keep
+    why: ShopPaymentQueueBacklog alert; on no dashboard and never queried (alert-only edge case)
+  route:shop_http_request_duration_seconds:p99_5m:
+    class: hard_keep
+    why: recorded series used by ShopHighLatency and Shop Overview panel 3
+  shop_cart_operations_total:
+    class: keep_high
+    why: Shop Overview panel 4, sum by (op)
+  node_cpu_seconds_total:
+    class: keep_high
+    why: Shop Overview panel 5
+  node_memory_MemAvailable_bytes:
+    class: keep_medium
+    why: ad hoc query from the viewer every third round
+  shop_legacy_queue_depth:
+    class: low
+    why: Legacy Queue dashboard, never viewed
+  shop_legacy_batch_duration_seconds:
+    class: low
+    why: Legacy Queue dashboard, never viewed
+  shop_cache_*:
+    class: drop_metric
+    why: 30 gauges x 2 caches x 16 shards = 960 series, never referenced
+  shop_feature_flag_evaluations_total:
+    class: drop_metric
+    why: high cardinality (flag x variant x user_id), never referenced
+  "*_created":
+    class: drop_metric
+    why: prometheus_client emits a _created series per counter/histogram; never referenced
+  shop_http_request_duration_seconds_sum:
+    class: drop_metric
+    why: only _bucket is used; _sum is unreferenced (low priority, cheap)
+  shop_http_request_duration_seconds_count:
+    class: drop_metric
+    why: only _bucket is used; _count is unreferenced (low priority, cheap)
+  shop_cache_hits_total:
+    class: drop_metric
+    why: only input is the unused recording rule job:shop_cache_hit_ratio:5m
+  shop_cache_requests_total:
+    class: drop_metric
+    why: only input is the unused recording rule job:shop_cache_hit_ratio:5m
+  node_*:
+    class: drop_metric
+    why: every node-exporter metric except node_cpu_seconds_total and node_memory_MemAvailable_bytes
+
+labels:
+  shop_cart_operations_total/user_id:
+    class: drop_label
+    why: panel 4 groups by op only; 2000 possible users drive the cardinality
+    check: dropping user_id must not create duplicate series (op stays unique per series after aggregation)
+
+rules:
+  job:shop_cache_hit_ratio:5m:
+    class: drop_rule
+    why: no alert, dashboard or query uses it
+
+streams:
+  '{app="shop", component="api", level="info"}':
+    class: keep_high
+    why: Shop Overview logs panel, level=~"info|warn|error"
+  '{app="shop", component="api", level="warn"}':
+    class: keep_high
+    why: same panel
+  '{app="shop", component="api", level="error"}':
+    class: keep_high
+    why: same panel
+  '{app="shop", component="audit", level="info"}':
+    class: hard_keep
+    why: Loki alert ShopAuditDenials; also matched by the logs panel
+  '{app="shop", component="api", level="debug"}':
+    class: route_cold
+    why: about 88% of shop log bytes; excluded by the panel's regex matcher; never queried
+
+scrape:
+  global_scrape_interval:
+    class: lower_resolution
+    why: 10s scrapes, but every panel uses $__rate_interval at multi-minute steps over 6h
+
+# Edge cases the lab deliberately exercises:
+#   - regex matcher that excludes a stream (level=~"info|warn|error" does not match debug)
+#   - dashboard template variable referencing a metric (label_values(...))
+#   - transitive hard keep through a recording rule
+#   - recording rule whose own output is unused
+#   - alert-only metric with no dashboard or query
+#   - histogram whose _bucket is used but _sum/_count are not
