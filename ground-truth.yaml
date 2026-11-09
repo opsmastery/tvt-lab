@@ -2,7 +2,8 @@
 # viewer running. tvt's golden tests compare a scan of this lab against this file.
 #
 # Classes:
-#   hard_keep         never recommended (alert, recording rule feeding an alert, Loki alert)
+#   hard_keep         never recommended (alert, recording rule feeding an alert, Loki alert,
+#                     Grafana-managed alert)
 #   keep_high         on a viewed dashboard
 #   keep_medium       ad hoc queries only
 #   low               only on a dashboard nobody views
@@ -10,6 +11,8 @@
 #   drop_label        metric is used, but this label is never matched, grouped or joined on
 #   drop_rule         recording rule with no consumers (recommend removing the rule)
 #   route_cold        log stream never queried: recommend cold storage over deletion
+#   line_handoff      a line pattern inside a kept stream that nothing reads: tvt reports it with its
+#                     cost and hands the line-level cut to zeroreads (tvt doesn't generate line filters)
 #   lower_resolution  scrape interval is finer than any dashboard step uses
 
 metrics:
@@ -22,6 +25,14 @@ metrics:
   shop_payment_queue_depth:
     class: hard_keep
     why: ShopPaymentQueueBacklog alert; on no dashboard and never queried (alert-only edge case)
+  shop_order_export_lag_seconds:
+    class: hard_keep
+    why: >
+      Grafana-managed alert "Shop order export lag" (grafana/provisioning/alerting).
+      No Prometheus rule, no dashboard. Its only usage evidence outside the ruler API
+      is Grafana's alert evaluation in the Prometheus query log, every minute from
+      Grafana's IP, which by itself would only rank it as ad hoc usage.
+    source: Grafana ruler API (/api/prometheus/grafana/api/v1/rules) or provisioning API
   route:shop_http_request_duration_seconds:p99_5m:
     class: hard_keep
     why: recorded series used by ShopHighLatency and Shop Overview panel 3
@@ -34,6 +45,12 @@ metrics:
   node_memory_MemAvailable_bytes:
     class: keep_medium
     why: ad hoc query from the viewer every third round
+  shop_healthcheck_checks_total:
+    class: keep_high
+    why: Shop Overview panel 7 (health check pass rate by probe)
+  shop_healthcheck_duration_seconds_*:
+    class: drop_metric
+    why: emitted but on no dashboard, alert or query (low priority; small)
   shop_legacy_queue_depth:
     class: low
     why: Legacy Queue dashboard, never viewed
@@ -93,6 +110,38 @@ streams:
     class: route_cold
     why: about 88% of shop log bytes; excluded by the panel's regex matcher; never queried
 
+# Line-level findings: patterns inside a stream that is itself kept.
+line_patterns:
+  healthz_success:
+    stream: '{app="shop", component="api", level="info"}'
+    pattern: 'method=GET route=/healthz status=200 duration_ms=<_> probe=<_> replica=<_> request_id=<_> user=-'
+    filter: 'route=/healthz AND status=200'   # what zeroreads should be able to prove and cut
+    class: line_handoff
+    why: >
+      About 64% of the info stream's bytes. Health check pass rate is already a
+      metric (panel 7). No alert or query reads the success lines.
+    tvt_expected: >
+      The report lists the pattern under the info stream with its share of bytes and
+      monthly cost, and points to zeroreads. tvt proposes no config for it and does
+      not recommend dropping or rerouting the stream itself (panels 6 and 8 use it).
+    # The blast radius below is what a line-level cut would have to respect; it is
+    # the expected answer when zeroreads (or a future tvt integration) is run on the lab.
+    blast_radius:
+      blocks: []   # nothing should block this drop
+      value_changes:
+        - consumer: Shop Overview panel 8 (log lines per second by level)
+          why: counts every line in the stream with no line filter, so its info series drops by about 60%
+      not_affected:
+        - consumer: Shop Overview panel 6 (logs panel)
+          why: displays raw lines; fewer health check lines is the point, nothing depends on them
+        - consumer: ad hoc query {app="shop", component="api"} |= "route=/healthz" != "status=200"
+          why: line filters exclude status=200, so it only ever reads failures
+  healthz_failure:
+    stream: '{app="shop", component="api", level="warn"}'
+    pattern: 'method=GET route=/healthz status=503 ... reason=db_ping_timeout'
+    class: keep_medium
+    why: read by the on-call ad hoc query; also rare and cheap
+
 scrape:
   global_scrape_interval:
     class: lower_resolution
@@ -104,4 +153,8 @@ scrape:
 #   - transitive hard keep through a recording rule
 #   - recording rule whose own output is unused
 #   - alert-only metric with no dashboard or query
+#   - metric read only by a Grafana-managed alert (invisible to the Prometheus rules API)
 #   - histogram whose _bucket is used but _sum/_count are not
+#   - /healthz: a droppable line pattern inside a kept stream (line-level: reported and handed to zeroreads)
+#   - a query that references /healthz lines but excludes the successful ones (!= "status=200")
+#   - a LogQL metric query over a whole stream whose values change, but don't break, when lines are dropped
