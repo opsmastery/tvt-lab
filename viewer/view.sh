@@ -15,6 +15,7 @@
 GRAFANA_URL=${GRAFANA_URL:-http://grafana:3000}
 GRAFANA_AUTH=${GRAFANA_AUTH:-admin:admin}
 PROM_URL=${PROM_URL:-http://prometheus:9090}
+LOKI_URL=${LOKI_URL:-http://loki:3100}
 INTERVAL_SECONDS=${INTERVAL_SECONDS:-300}
 DASH=shop-overview
 REFERER="$GRAFANA_URL/d/$DASH/shop-overview?orgId=1"
@@ -45,11 +46,19 @@ while true; do
   panel_query 4 prometheus prometheus '"sum by (op) (rate(shop_cart_operations_total[1m]))"'
   panel_query 5 prometheus prometheus '"sum by (mode) (rate(node_cpu_seconds_total[1m]))"'
   panel_query 6 loki loki '"{app=\"shop\", level=~\"info|warn|error\"}"'
+  panel_query 7 prometheus prometheus '"sum by (probe) (rate(shop_healthcheck_checks_total{result=\"success\"}[1m])) / sum by (probe) (rate(shop_healthcheck_checks_total[1m]))"'
+  panel_query 8 loki loki '"sum by (level) (rate({app=\"shop\", component=\"api\"}[1m]))"'
 
   if [ $((round % 3)) -eq 0 ]; then
     curl -fsS -o /dev/null -G "$PROM_URL/api/v1/query" \
       --data-urlencode 'query=node_memory_MemAvailable_bytes' \
       || echo "viewer: ad hoc query failed"
+    # On-call digging into failed health checks only: references /healthz
+    # lines, but never the successful ones.
+    curl -fsS -o /dev/null -G "$LOKI_URL/loki/api/v1/query_range" \
+      --data-urlencode 'query={app="shop", component="api"} |= "route=/healthz" != "status=200"' \
+      --data-urlencode 'limit=100' \
+      || echo "viewer: ad hoc log query failed"
   fi
   sleep "$INTERVAL_SECONDS"
 done

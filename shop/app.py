@@ -10,6 +10,13 @@ ground-truth.yaml:
   waste:     shop_cache_* (30 gauges x 16 shards), shop_feature_flag_evaluations_total,
              shop_cache_hits/requests_total (feed only an unused recording rule)
 
+Health checks (the /healthz scenario): a simulated fleet of probers hits
+/healthz constantly. Pass rate and latency are tracked in metrics
+(shop_healthcheck_*), and every successful check is ALSO logged as an info
+line in the same api stream as real traffic. Those success lines are the
+largest share of the info stream, and nothing reads them. Failures (503) are
+logged at warn and are queried ad hoc.
+
 Logs are pushed to Loki as streams {app="shop", level, component}:
   info/warn/error api logs  -> on the Shop Overview logs panel
   debug api logs            -> high volume, never queried (cold-storage candidate)
@@ -29,6 +36,10 @@ from prometheus_client import Counter, Gauge, Histogram, start_http_server
 LOKI_URL = os.environ.get("LOKI_URL", "http://loki:3100").rstrip("/")
 RPS = float(os.environ.get("REQUESTS_PER_SECOND", "20"))
 PORT = int(os.environ.get("PORT", "8080"))
+# Health checks per second across the simulated fleet (probers x replicas).
+HEALTHCHECKS_PER_SECOND = float(os.environ.get("HEALTHCHECKS_PER_SECOND", "30"))
+PROBES = ["kubelet-liveness", "kubelet-readiness", "alb-target-health"]
+REPLICAS = [f"shop-{n}" for n in range(10)]
 
 ROUTES = ["/", "/products", "/product/:id", "/cart", "/checkout", "/search", "/account"]
 METHODS = {"/cart": ["GET", "POST", "DELETE"], "/checkout": ["POST"]}
@@ -42,6 +53,12 @@ request_duration = Histogram(
     "shop_http_request_duration_seconds", "HTTP request latency.", ["route"])
 cart_ops = Counter(
     "shop_cart_operations", "Cart operations.", ["op", "user_id"])  # user_id: droppable label
+
+healthchecks = Counter(
+    "shop_healthcheck_checks", "Health checks served.", ["probe", "result"])
+healthcheck_duration = Histogram(
+    "shop_healthcheck_duration_seconds", "Health check latency.", ["probe"],
+    buckets=(0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1))
 
 # --- alert-only -----------------------------------------------------------
 payment_queue = Gauge("shop_payment_queue_depth", "Payments waiting to be processed.")
@@ -148,6 +165,29 @@ def simulate_request():
                  f"action={route.strip('/') or 'home'} user={user} result={result} request_id={req_id}")
 
 
+def simulate_healthcheck():
+    probe = random.choice(PROBES)
+    replica = random.choice(REPLICAS)
+    ok = random.random() >= 0.005
+    duration = max(0.0002, random.lognormvariate(0, 0.5) * 0.0008)
+    healthchecks.labels(probe, "success" if ok else "failure").inc()
+    healthcheck_duration.labels(probe).observe(duration)
+    status = "200" if ok else "503"
+    line = (f'method=GET route=/healthz status={status} duration_ms={duration * 1000:.2f} '
+            f'probe={probe} replica={replica} request_id={uuid.uuid4().hex[:16]} user=-')
+    # Successes land in the same info/api stream as real traffic; failures at warn.
+    loki.log("info" if ok else "warn", "api", line if ok else line + " reason=db_ping_timeout")
+
+
+def healthcheck_loop():
+    if HEALTHCHECKS_PER_SECOND <= 0:
+        return
+    interval = 1.0 / HEALTHCHECKS_PER_SECOND
+    while True:
+        simulate_healthcheck()
+        time.sleep(interval * random.uniform(0.5, 1.5))
+
+
 def background_gauges():
     shards = [str(s) for s in range(16)]
     while True:
@@ -165,7 +205,9 @@ def main():
     start_http_server(PORT)
     threading.Thread(target=loki.run, daemon=True).start()
     threading.Thread(target=background_gauges, daemon=True).start()
-    print(f"shop: metrics on :{PORT}, logs to {LOKI_URL}, {RPS} req/s", flush=True)
+    threading.Thread(target=healthcheck_loop, daemon=True).start()
+    print(f"shop: metrics on :{PORT}, logs to {LOKI_URL}, {RPS} req/s, "
+          f"{HEALTHCHECKS_PER_SECOND} health checks/s", flush=True)
     interval = 1.0 / RPS if RPS > 0 else 1.0
     while True:
         simulate_request()
