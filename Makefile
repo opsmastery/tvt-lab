@@ -1,7 +1,7 @@
 # Uses `podman compose`. To use podman-compose directly: make COMPOSE=podman-compose up
 COMPOSE ?= podman compose
 
-.PHONY: up up-mimir down reset ps logs build validate urls
+.PHONY: up up-mimir down reset ps logs build validate urls autostart autostart-off
 
 up: build
 	$(COMPOSE) up -d
@@ -47,3 +47,21 @@ urls:
 	@echo "  Loki          http://localhost:3100"
 	@echo "  Alertmanager  http://localhost:9093"
 	@echo "  Shop metrics  http://localhost:8080/metrics"
+
+# Keep the lab collecting across reboots (macOS):
+#  - inside the Podman VM, podman-restart.service restarts restart-policy
+#    containers when the VM boots;
+#  - a LaunchAgent starts the VM at login.
+# Sleep still pauses the VM: on power, enable "Prevent automatic sleeping
+# when the display is off" (System Settings > Battery > Options).
+PLIST := com.opsmastery.podman-machine.plist
+
+autostart:
+	podman machine ssh -- sudo systemctl enable podman-restart.service
+	cp macos/$(PLIST) ~/Library/LaunchAgents/$(PLIST)
+	launchctl bootstrap gui/$$(id -u) ~/Library/LaunchAgents/$(PLIST) 2>/dev/null || true
+	@echo "autostart on: VM starts at login, containers restart with the VM"
+
+autostart-off:
+	-launchctl bootout gui/$$(id -u)/com.opsmastery.podman-machine
+	rm -f ~/Library/LaunchAgents/$(PLIST)

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Starts the Podman VM at login so tvt-lab keeps collecting history.
+     Containers then come back via podman-restart.service inside the VM.
+     Install with `make autostart`, remove with `make autostart-off`. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.opsmastery.podman-machine</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/podman/bin/podman</string>
+		<string>machine</string>
+		<string>start</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/podman/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/tmp/podman-machine-autostart.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/podman-machine-autostart.log</string>
+</dict>
+</plist>
