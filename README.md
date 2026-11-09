@@ -44,7 +44,8 @@ For the Grafana API, create a Viewer service account under **Administration → 
 | --- | --- |
 | Prometheus query log | `podman compose exec prometheus cat /prometheus/query.log` |
 | Loki query stats | `podman compose logs loki` (lines containing `metrics.go`) |
-| Grafana request / data-proxy logs | `podman compose logs grafana`: do they record dashboard UID and panel ID? (spike 1) |
+| Grafana router log (dashboard loads) | `podman compose logs grafana \| grep 'path=/api/dashboards/uid/'` |
+| Mimir query stats (with dashboard and panel headers) | `podman compose logs mimir \| grep 'msg="query stats"'` |
 | Loki bytes per stream | `curl -G localhost:3100/loki/api/v1/index/volume --data-urlencode 'query={app="shop"}'` |
 | Prometheus cardinality | `curl localhost:9090/api/v1/status/tsdb` |
 | Mimir cardinality | `curl 'localhost:9009/prometheus/api/v1/cardinality/label_names'` |
