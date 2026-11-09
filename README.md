@@ -30,6 +30,8 @@ Leave it running. tvt's confidence model wants **30 days** of history, and Prome
 
 On macOS, run `make autostart` once. It enables `podman-restart.service` in the Podman VM, so the containers come back whenever the VM boots, and installs a LaunchAgent that starts the VM at login. Sleep still pauses the VM and leaves gaps in the history, so keep the Mac awake while it's on power (System Settings > Battery > Options > "Prevent automatic sleeping when the display is off"). `make autostart-off` removes the LaunchAgent.
 
+To scan the lab with `tvt scan`, run `make export-logs` first. It copies the Prometheus query log and Grafana's file log (`grafana.log*`) into `./lab-logs` (gitignored) for `--prom-query-log` and `--grafana-log`.
+
 On Linux with SELinux enforcing, add `:Z` to the bind mounts in `compose.yaml`.
 
 ## Point tvt at it

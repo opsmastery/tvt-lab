@@ -1,7 +1,7 @@
 # Uses `podman compose`. To use podman-compose directly: make COMPOSE=podman-compose up
 COMPOSE ?= podman compose
 
-.PHONY: up up-mimir down reset ps logs build validate urls autostart autostart-off
+.PHONY: up up-mimir down reset ps logs export-logs build validate urls autostart autostart-off
 
 up: build
 	$(COMPOSE) up -d
@@ -28,6 +28,14 @@ ps:
 
 logs:
 	$(COMPOSE) logs -f --tail=50
+
+# Copy the usage logs tvt scan reads to ./lab-logs:
+#   tvt scan ... --prom-query-log lab-logs/query.log --grafana-log 'lab-logs/grafana.log*'
+export-logs:
+	mkdir -p lab-logs
+	$(COMPOSE) exec -T prometheus cat /prometheus/query.log > lab-logs/query.log
+	$(COMPOSE) exec -T grafana sh -c 'cd /var/lib/grafana/logs && tar cf - grafana.log*' | tar xf - -C lab-logs
+	@ls -l lab-logs
 
 # Validate configs with the tools baked into the images.
 validate:
