@@ -53,6 +53,9 @@ services:
       # Spike 1: can dashboard/panel usage be seen in OSS logs?
       GF_SERVER_ROUTER_LOGGING: "true"
       GF_DATAPROXY_LOGGING: "true"
+      # Forward X-Grafana-User to datasources, so query logs that record
+      # headers (Mimir) can attribute a query to a person.
+      GF_DATAPROXY_SEND_USER_HEADER: "true"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
