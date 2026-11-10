@@ -118,6 +118,18 @@ services:
       - mimir-data:/data
     restart: unless-stopped
 
+  # One-shot: loads mimir/rules/*.yml into Mimir's ruler (namespace tvt-lab),
+  # since the lab's Mimir has no rules of its own otherwise.
+  mimir-rules:
+    image: docker.io/curlimages/curl:8.11.1
+    profiles: [mimir]
+    depends_on: [mimir]
+    entrypoint: ["/bin/sh", "/load-rules.sh"]
+    volumes:
+      - ./mimir/load-rules.sh:/load-rules.sh:ro
+      - ./mimir/rules:/rules:ro
+    restart: "no"
+
 volumes:
   prometheus-data:
   loki-data:
