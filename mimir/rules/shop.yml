@@ -1,0 +1,28 @@
+# Rule group for Mimir's ruler, loaded by the one-shot mimir-rules service
+# (profile: mimir) into namespace tvt-lab. tvt reads it from
+# GET /prometheus/api/v1/rules with Source "mimir".
+#
+# The recording rules copy shop-recording in prometheus/rules/shop.yml. The
+# ruler: mimir label keeps their output apart from the same series that
+# Prometheus records and remote-writes, which would otherwise collide.
+name: shop-recording
+rules:
+  - record: route:shop_http_request_duration_seconds:p99_5m
+    expr: histogram_quantile(0.99, sum by (le, route) (rate(shop_http_request_duration_seconds_bucket[5m])))
+    labels:
+      ruler: mimir
+
+  - record: job:shop_cache_hit_ratio:5m
+    expr: sum by (job) (rate(shop_cache_hits_total[5m])) / sum by (job) (rate(shop_cache_requests_total[5m]))
+    labels:
+      ruler: mimir
+
+  # Mimir-only alert on a metric nothing else reads: node_load15 is a hard
+  # keep when tvt scans Mimir, and invisible to Prometheus's rules API.
+  - alert: NodeLoadHigh
+    expr: node_load15 > 8
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      summary: "15-minute load average above 8"
