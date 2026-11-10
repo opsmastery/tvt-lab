@@ -88,10 +88,62 @@ labels:
     why: panel 4 groups by op only; 2000 possible users drive the cardinality
     check: dropping user_id must not create duplicate series (op stays unique per series after aggregation)
 
+# Every rule in the lab, by name. source is the ruler that evaluates it:
+# prometheus (prometheus/rules/shop.yml), loki (loki/rules) or grafana
+# (grafana/provisioning/alerting). Mimir's rules are under mimir: below.
 rules:
+  ShopHighLatency:
+    source: prometheus
+    group: shop-alerts
+    kind: alert
+    class: hard_keep
+    why: alert
+  ShopHighErrorRate:
+    source: prometheus
+    group: shop-alerts
+    kind: alert
+    class: hard_keep
+    why: alert
+  ShopPaymentQueueBacklog:
+    source: prometheus
+    group: shop-alerts
+    kind: alert
+    class: hard_keep
+    why: alert
+  route:shop_http_request_duration_seconds:p99_5m:
+    source: prometheus
+    group: shop-recording
+    kind: record
+    class: hard_keep
+    why: feeds ShopHighLatency
   job:shop_cache_hit_ratio:5m:
+    source: prometheus
+    group: shop-recording
+    kind: record
     class: drop_rule
     why: no alert, dashboard or query uses it
+  ShopAuditDenials:
+    source: loki
+    group: shop-audit
+    kind: alert
+    class: hard_keep
+    why: Loki alert on {app="shop", component="audit"}
+  Shop order export lag:
+    source: grafana
+    group: shop-grafana-alerts
+    kind: alert
+    class: hard_keep
+    why: Grafana-managed alert on shop_order_export_lag_seconds
+
+# Dashboards and whether people view them. The viewer service loads Shop
+# Overview in a browser; nothing loads Legacy Queue.
+dashboards:
+  shop-overview:
+    title: Shop Overview
+    viewed: true
+  legacy-queue:
+    title: Legacy Queue
+    viewed: false
 
 # Only with the mimir profile (make up-mimir): what a scan of Mimir
 # (tvt scan --mimir) adds on top of the sections above. The one-shot
