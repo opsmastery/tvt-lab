@@ -93,6 +93,39 @@ rules:
     class: drop_rule
     why: no alert, dashboard or query uses it
 
+# Only with the mimir profile (make up-mimir): what a scan of Mimir
+# (tvt scan --mimir) adds on top of the sections above. The one-shot
+# mimir-rules service loads mimir/rules/shop.yml into Mimir's ruler, namespace
+# tvt-lab. Prometheus remote-writes every series, so Mimir has the same
+# metrics; only the rules differ.
+mimir:
+  rules:
+    route:shop_http_request_duration_seconds:p99_5m:
+      group: shop-recording
+      kind: record
+      class: hard_keep
+      why: >
+        Copy of the Prometheus rule (its series carry ruler=mimir). Its output has the
+        metric name ShopHighLatency and Shop Overview panel 3 read, and tvt matches by
+        name, so it must not recommend removing the rule.
+    job:shop_cache_hit_ratio:5m:
+      group: shop-recording
+      kind: record
+      class: drop_rule
+      why: copy of the unused Prometheus rule; no alert, dashboard or query reads its output
+    NodeLoadHigh:
+      group: shop-recording
+      kind: alert
+      class: hard_keep
+      why: Mimir-only alert
+  metrics:
+    node_load15:
+      class: hard_keep
+      why: >
+        Read only by the Mimir ruler's NodeLoadHigh alert. A --prom scan can't see
+        it (the Prometheus rules API doesn't list Mimir's rules) and ranks it with
+        node_* as drop_metric; a --mimir scan must protect it.
+
 streams:
   '{app="shop", component="api", level="info"}':
     class: keep_high
@@ -154,6 +187,7 @@ scrape:
 #   - recording rule whose own output is unused
 #   - alert-only metric with no dashboard or query
 #   - metric read only by a Grafana-managed alert (invisible to the Prometheus rules API)
+#   - metric read only by a Mimir ruler alert (node_load15; mimir profile only)
 #   - histogram whose _bucket is used but _sum/_count are not
 #   - /healthz: a droppable line pattern inside a kept stream (line-level: reported and handed to zeroreads)
 #   - a query that references /healthz lines but excludes the successful ones (!= "status=200")
