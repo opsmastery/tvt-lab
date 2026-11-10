@@ -7,7 +7,7 @@ MIMIR=${MIMIR:-http://mimir:9009}
 NAMESPACE=${NAMESPACE:-tvt-lab}
 
 i=0
-until curl -fsS -o /dev/null "$MIMIR/ready"; do
+until curl -fs -o /dev/null "$MIMIR/ready"; do
   i=$((i + 1))
   if [ "$i" -ge 60 ]; then
     echo "mimir-rules: Mimir not ready after 5 minutes" >&2
@@ -18,6 +18,6 @@ done
 
 for f in /rules/*.yml; do
   curl -fsS -X POST -H 'Content-Type: application/yaml' --data-binary "@$f" \
-    "$MIMIR/prometheus/config/v1/rules/$NAMESPACE"
+    -o /dev/null "$MIMIR/prometheus/config/v1/rules/$NAMESPACE"
   echo "mimir-rules: loaded $f into $NAMESPACE"
 done
