@@ -292,7 +292,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (level) (rate({app=\"shop\", component=\"api\"}[$__auto]))",
+          "expr": "sum by (level) (rate({app=\"shop\", component=\"api\", level=~\"info|warn|error\"}[$__auto]))",
           "legendFormat": "{{level}}"
         }
       ],
