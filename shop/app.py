@@ -78,6 +78,12 @@ checkout_attempts = Counter(
 gateway_retries = Counter(
     "shop_payment_gateway_retries", "Payment gateway calls retried.")
 
+# Read ONLY by the absent() alert ShopInventorySyncMissing (prometheus/rules):
+# it fires when the series disappears, so it never returns data while healthy.
+# tvt must keep it (hard_keep) and never call the rule broken (Sprint 2 item 18).
+inventory_sync = Gauge(
+    "shop_inventory_sync_last_success_timestamp_seconds", "When the inventory sync last succeeded.")
+
 # --- stale dashboard ------------------------------------------------------
 legacy_queue = Gauge("shop_legacy_queue_depth", "Legacy batch queue depth.")
 legacy_batch = Gauge("shop_legacy_batch_duration_seconds", "Last legacy batch duration.")
@@ -212,6 +218,7 @@ def background_gauges():
     while True:
         payment_queue.set(max(0, random.gauss(20, 8)))
         order_export_lag.set(max(0, random.gauss(90, 30)))
+        inventory_sync.set(time.time())
         legacy_queue.set(max(0, random.gauss(300, 50)))
         legacy_batch.set(max(1, random.gauss(42, 5)))
         for g in cache_gauges.values():
