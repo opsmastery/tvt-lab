@@ -1,0 +1,23 @@
+# Sloth SLO spec (https://sloth.dev). Deliberately NOT loaded into Prometheus:
+# shop_checkout_attempts_total is read by nothing but this SLO, so tvt can only
+# protect it by reading this file (tvt.yaml slos.paths). Ground truth: hard_keep.
+version: "prometheus/v1"
+service: "shop"
+labels:
+  team: shop
+slos:
+  - name: "checkout-success"
+    objective: 99.5
+    description: "Checkouts that don't fail with a server error."
+    sli:
+      events:
+        error_query: sum(rate(shop_checkout_attempts_total{outcome="failure"}[{{.window}}]))
+        total_query: sum(rate(shop_checkout_attempts_total[{{.window}}]))
+    alerting:
+      name: ShopCheckoutSLOBurn
+      page_alert:
+        labels:
+          severity: critical
+      ticket_alert:
+        labels:
+          severity: warning
