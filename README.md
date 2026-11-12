@@ -30,14 +30,18 @@ Leave it running. tvt's confidence model wants **30 days** of history, and Prome
 
 On macOS, run `make autostart` once. It enables `podman-restart.service` in the Podman VM, so the containers come back whenever the VM boots, and installs a LaunchAgent that starts the VM at login. Sleep still pauses the VM and leaves gaps in the history, so keep the Mac awake while it's on power (System Settings > Battery > Options > "Prevent automatic sleeping when the display is off"). `make autostart-off` removes the LaunchAgent.
 
-To scan the lab with `tvt scan`, run `make export-logs` first. It copies the Prometheus query log and Grafana's file log (`grafana.log*`) into `./lab-logs` (gitignored) for `--prom-query-log` and `--grafana-log`.
+The usage logs tvt reads land in `./lab-logs` (gitignored), live: Prometheus writes its query log to `lab-logs/prometheus/query.log` (a bind mount), and Loki and Mimir write their own logs to `lab-logs/loki.log` and `lab-logs/mimir.log` through Podman's `k8s-file` log driver (CRI format; Podman truncates each at 1 GB, about three months of Loki). tvt must read these live files: each scan sends a probe query and checks that it shows up, or that log counts as 0% coverage. Grafana's file log stays on its data volume; `make export-logs` copies `grafana.log*` into `./lab-logs` for `--grafana-log`. Run compose through `make` (it sets `LAB_LOGS`, the absolute path compose's logging options need).
 
 On Linux with SELinux enforcing, add `:Z` to the bind mounts in `compose.yaml`.
 
 ## Point tvt at it
 
 ```sh
-tvt scan --grafana http://localhost:3000 --prom http://localhost:9090 --loki http://localhost:3100
+make export-logs
+tvt scan --grafana http://localhost:3000 --prom http://localhost:9090 --loki http://localhost:3100 \
+  --prom-query-log lab-logs/prometheus/query.log --loki-query-log lab-logs/loki.log \
+  --grafana-log 'lab-logs/grafana.log*'
+# Mimir profile: --mimir http://localhost:9009 --mimir-query-log lab-logs/mimir.log instead of --prom
 ```
 
 For the Grafana API, create a Viewer service account under **Administration → Users and access → Service accounts** and export its token as `TVT_GRAFANA_TOKEN`.
@@ -46,8 +50,8 @@ For the Grafana API, create a Viewer service account under **Administration → 
 
 | Evidence | Where to look |
 | --- | --- |
-| Prometheus query log | `podman compose exec prometheus cat /prometheus/query.log` |
-| Loki query stats | `podman compose logs loki` (lines containing `metrics.go`) |
+| Prometheus query log | `lab-logs/prometheus/query.log` (before Nov 12, 2026: `/prometheus/query.log` on the data volume) |
+| Loki query stats | `lab-logs/loki.log` or `podman compose logs loki` (lines containing `metrics.go`) |
 | Grafana router log (dashboard loads) | `podman compose logs grafana \| grep 'path=/api/dashboards/uid/'` |
 | Mimir query stats (with dashboard and panel headers) | `podman compose logs mimir \| grep 'msg="query stats"'` |
 | Loki bytes per stream | `curl -G localhost:3100/loki/api/v1/index/volume --data-urlencode 'query={app="shop"}'` |

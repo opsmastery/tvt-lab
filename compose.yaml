@@ -20,6 +20,10 @@ services:
     volumes:
       - ./prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
+      # The query log on the host, so tvt scan reads the live file and finds
+      # its probe query (tvt Sprint 2 item 4). Created world-writable by make
+      # (Prometheus runs as nobody).
+      - ./lab-logs/prometheus:/var/log/prometheus
     depends_on: [alertmanager]
     restart: unless-stopped
 
@@ -33,6 +37,13 @@ services:
       - loki-data:/loki
     depends_on: [alertmanager]
     restart: unless-stopped
+    # Loki's own log (its query log: metrics.go lines) as a file on the host
+    # in the CRI format, for tvt scan --loki-query-log. LAB_LOGS is set by make.
+    logging:
+      driver: k8s-file
+      options:
+        path: ${LAB_LOGS:?run through make, or set LAB_LOGS to the absolute path of ./lab-logs}/loki.log
+        max-size: 1gb  # Podman ignores max_size; it truncates the file at this size
 
   alertmanager:
     image: docker.io/prom/alertmanager:v0.28.1
@@ -117,6 +128,13 @@ services:
       - ./mimir/mimir.yml:/etc/mimir/mimir.yml:ro
       - mimir-data:/data
     restart: unless-stopped
+    # Mimir's own log (query-frontend query stats lines), for tvt scan
+    # --mimir-query-log.
+    logging:
+      driver: k8s-file
+      options:
+        path: ${LAB_LOGS:?run through make, or set LAB_LOGS to the absolute path of ./lab-logs}/mimir.log
+        max-size: 1gb  # Podman ignores max_size; it truncates the file at this size
 
   # One-shot: loads mimir/rules/*.yml into Mimir's ruler (namespace tvt-lab),
   # since the lab's Mimir has no rules of its own otherwise.
