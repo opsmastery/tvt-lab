@@ -2,7 +2,7 @@
 global:
   scrape_interval: 10s
   evaluation_interval: 30s
-  query_log_file: /prometheus/query.log
+  query_log_file: /var/log/prometheus/query.log  # ./lab-logs/prometheus on the host, read live by tvt
 
 rule_files:
   - /etc/prometheus/rules/*.yml
