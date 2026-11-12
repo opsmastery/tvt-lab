@@ -24,6 +24,7 @@ podman machine init --memory 6144 --cpus 4   # first time only
 podman machine start
 make up          # or: make up-mimir
 make validate    # check the Prometheus, Loki and Alertmanager configs with their own tools
+make check-live  # check the running stack loaded every rule and Grafana alert in the repo
 ```
 
 Leave it running. tvt's confidence model wants **30 days** of history, and Prometheus and Loki keep 45. `make down` stops the stack and keeps the data. `make reset` deletes it.

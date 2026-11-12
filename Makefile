@@ -1,7 +1,7 @@
 # Uses `podman compose`. To use podman-compose directly: make COMPOSE=podman-compose up
 COMPOSE ?= podman compose
 
-.PHONY: up up-mimir down reset ps logs export-logs build validate urls autostart autostart-off
+.PHONY: up up-mimir down reset ps logs export-logs build validate check-live urls autostart autostart-off
 
 up: build
 	$(COMPOSE) up -d
@@ -47,6 +47,11 @@ validate:
 		docker.io/grafana/loki:3.5.3 -config.file=/etc/loki/loki.yml -verify-config
 	podman run --rm -v ./alertmanager:/etc/alertmanager:ro --entrypoint amtool \
 		docker.io/prom/alertmanager:v0.28.1 check-config /etc/alertmanager/alertmanager.yml
+
+# Is the running lab what the repo describes? Every rule and Grafana alert
+# on disk must be loaded (Grafana reads alert provisioning only at start).
+check-live:
+	./scripts/check-live.sh
 
 urls:
 	@echo ""
