@@ -45,6 +45,12 @@ metrics:
       Read only by step 1 of runbooks/payment-queue-backlog.md, the runbook_url of
       ShopPaymentQueueBacklog. No rule, dashboard or query reads it.
     source: alert runbook (tvt.yaml runbooks mirror for the tvt-lab GitHub URL)
+  shop_inventory_sync_last_success_timestamp_seconds:
+    class: hard_keep
+    why: >
+      Read only by the absent() alert ShopInventorySyncMissing, which returns no
+      series while the sync is healthy. Dropping it, or its job label, would fire
+      the alert. Never a "rule returned nothing for 30 days" finding.
   route:shop_http_request_duration_seconds:p99_5m:
     class: hard_keep
     why: recorded series used by ShopHighLatency and Shop Overview panel 3
@@ -122,6 +128,12 @@ rules:
     kind: alert
     class: hard_keep
     why: alert
+  ShopInventorySyncMissing:
+    source: prometheus
+    group: shop-alerts
+    kind: alert
+    class: hard_keep
+    why: absent() alert on shop_inventory_sync_last_success_timestamp_seconds; returns nothing by design, never broken
   route:shop_http_request_duration_seconds:p99_5m:
     source: prometheus
     group: shop-recording
