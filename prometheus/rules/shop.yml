@@ -37,3 +37,6 @@ groups:
           severity: critical
         annotations:
           summary: "Payment queue backlog"
+          # Its query step is the only reader of shop_payment_gateway_retries_total
+          # (Sprint 2 item 7). tvt reads it through a tvt.yaml runbooks mirror.
+          runbook_url: https://github.com/Opsmastery-Summit/tvt-lab/blob/main/runbooks/payment-queue-backlog.md
