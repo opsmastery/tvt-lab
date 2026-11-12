@@ -6,6 +6,9 @@
 #
 # Image names are fully qualified so Podman never prompts for short-name resolution.
 
+# Ports are published on 127.0.0.1 only: Grafana runs with admin/admin. To reach
+# the lab from another machine, change the bindings deliberately.
+
 name: tvt-lab
 
 services:
@@ -16,7 +19,7 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=45d   # tvt needs >= 30 days of history
       - --web.enable-lifecycle
-    ports: ["9090:9090"]
+    ports: ["127.0.0.1:9090:9090"]
     volumes:
       - ./prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
@@ -26,7 +29,7 @@ services:
   loki:
     image: docker.io/grafana/loki:3.5.3
     command: ["-config.file=/etc/loki/loki.yml"]
-    ports: ["3100:3100"]
+    ports: ["127.0.0.1:3100:3100"]
     volumes:
       - ./loki/loki.yml:/etc/loki/loki.yml:ro
       - ./loki/rules:/etc/loki/rules:ro
@@ -37,14 +40,14 @@ services:
   alertmanager:
     image: docker.io/prom/alertmanager:v0.28.1
     command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
-    ports: ["9093:9093"]
+    ports: ["127.0.0.1:9093:9093"]
     volumes:
       - ./alertmanager:/etc/alertmanager:ro
     restart: unless-stopped
 
   grafana:
     image: docker.io/grafana/grafana:12.1.0
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:3000:3000"]
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
@@ -73,7 +76,7 @@ services:
     # Realistic "exporter emits hundreds of metrics, a handful are used".
     # Inside a Podman machine this reports the VM, which is fine for the lab.
     image: docker.io/prom/node-exporter:v1.9.1
-    ports: ["9100:9100"]
+    ports: ["127.0.0.1:9100:9100"]
     restart: unless-stopped
 
   shop:
@@ -83,7 +86,7 @@ services:
       context: ./shop
       dockerfile: Containerfile
     image: localhost/tvt-lab-shop:latest
-    ports: ["8080:8080"]
+    ports: ["127.0.0.1:8080:8080"]
     environment:
       LOKI_URL: http://loki:3100
       REQUESTS_PER_SECOND: "20"
@@ -112,7 +115,7 @@ services:
     image: docker.io/grafana/mimir:2.16.0
     profiles: [mimir]
     command: ["-config.file=/etc/mimir/mimir.yml"]
-    ports: ["9009:9009"]
+    ports: ["127.0.0.1:9009:9009"]
     volumes:
       - ./mimir/mimir.yml:/etc/mimir/mimir.yml:ro
       - mimir-data:/data
