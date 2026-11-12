@@ -193,7 +193,7 @@ streams:
     why: Loki alert ShopAuditDenials; also matched by the logs panel
   '{app="shop", component="api", level="debug"}':
     class: route_cold
-    why: about 88% of shop log bytes; excluded by the panel's regex matcher; never queried
+    why: about 88% of shop log bytes; excluded by the level matchers on panels 6 and 8 and the on-call query; never queried
 
 # Line-level findings: patterns inside a stream that is itself kept.
 line_patterns:
@@ -219,7 +219,7 @@ line_patterns:
       not_affected:
         - consumer: Shop Overview panel 6 (logs panel)
           why: displays raw lines; fewer health check lines is the point, nothing depends on them
-        - consumer: ad hoc query {app="shop", component="api"} |= "route=/healthz" != "status=200"
+        - consumer: ad hoc query {app="shop", component="api", level=~"warn|error"} |= "route=/healthz" != "status=200"
           why: line filters exclude status=200, so it only ever reads failures
   healthz_failure:
     stream: '{app="shop", component="api", level="warn"}'
@@ -233,7 +233,9 @@ scrape:
     why: 10s scrapes, but every panel uses $__rate_interval at multi-minute steps over 6h
 
 # Edge cases the lab deliberately exercises:
-#   - regex matcher that excludes a stream (level=~"info|warn|error" does not match debug)
+#   - regex matcher that excludes a stream (level=~"info|warn|error" does not match debug); panels 6
+#     and 8 and the on-call ad hoc query all carry one, because Loki reads every stream a selector
+#     matches, line filters or not
 #   - dashboard template variable referencing a metric (label_values(...))
 #   - transitive hard keep through a recording rule
 #   - recording rule whose own output is unused
