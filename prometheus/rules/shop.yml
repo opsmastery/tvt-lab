@@ -29,6 +29,16 @@ groups:
         annotations:
           summary: "Shop 5xx ratio above 5%"
 
+      # Absence alert: returns nothing while the sync runs, so its metric looks
+      # unread to every query log. It is a hard keep, and it is not a broken rule.
+      - alert: ShopInventorySyncMissing
+        expr: absent(shop_inventory_sync_last_success_timestamp_seconds{job="shop"})
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The inventory sync has stopped reporting"
+
       # Alert-only metric: on no dashboard and never queried, but must never be dropped.
       - alert: ShopPaymentQueueBacklog
         expr: shop_payment_queue_depth > 100
