@@ -68,6 +68,16 @@ payment_queue = Gauge("shop_payment_queue_depth", "Payments waiting to be proces
 order_export_lag = Gauge(
     "shop_order_export_lag_seconds", "Seconds since orders were last exported to the warehouse.")
 
+# --- declared-only (Sprint 2 item 7) -----------------------------------------
+# Read ONLY by the Sloth SLO in slos/shop-checkout.sloth.yml (not loaded into
+# Prometheus): no rule, no dashboard, no query. tvt must find it through the SLO.
+checkout_attempts = Counter(
+    "shop_checkout_attempts", "Checkout attempts by outcome.", ["outcome"])
+# Read ONLY by a query step in runbooks/payment-queue-backlog.md, which
+# ShopPaymentQueueBacklog links as its runbook_url.
+gateway_retries = Counter(
+    "shop_payment_gateway_retries", "Payment gateway calls retried.")
+
 # --- stale dashboard ------------------------------------------------------
 legacy_queue = Gauge("shop_legacy_queue_depth", "Legacy batch queue depth.")
 legacy_batch = Gauge("shop_legacy_batch_duration_seconds", "Last legacy batch duration.")
@@ -144,6 +154,10 @@ def simulate_request():
     requests_total.labels(method, route, status).inc()
     request_duration.labels(route).observe(duration)
 
+    if route == "/checkout":
+        checkout_attempts.labels("failure" if status == "500" else "success").inc()
+        if random.random() < 0.1:
+            gateway_retries.inc()
     if route == "/cart":
         cart_ops.labels({"GET": "view", "POST": "add", "DELETE": "remove"}[method], user).inc()
     for flag in random.sample(FLAGS, 2):

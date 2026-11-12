@@ -3,7 +3,7 @@
 #
 # Classes:
 #   hard_keep         never recommended (alert, recording rule feeding an alert, Loki alert,
-#                     Grafana-managed alert)
+#                     Grafana-managed alert, SLO, runbook query step)
 #   keep_high         on a viewed dashboard
 #   keep_medium       ad hoc queries only
 #   low               only on a dashboard nobody views
@@ -33,6 +33,18 @@ metrics:
       is Grafana's alert evaluation in the Prometheus query log, every minute from
       Grafana's IP, which by itself would only rank it as ad hoc usage.
     source: Grafana ruler API (/api/prometheus/grafana/api/v1/rules) or provisioning API
+  shop_checkout_attempts_total:
+    class: hard_keep
+    why: >
+      Read only by the Sloth SLO shop/checkout-success (slos/shop-checkout.sloth.yml),
+      which is not loaded into Prometheus. No rule, dashboard or query reads it.
+    source: SLO definitions (tvt.yaml slos.paths)
+  shop_payment_gateway_retries_total:
+    class: hard_keep
+    why: >
+      Read only by step 1 of runbooks/payment-queue-backlog.md, the runbook_url of
+      ShopPaymentQueueBacklog. No rule, dashboard or query reads it.
+    source: alert runbook (tvt.yaml runbooks mirror for the tvt-lab GitHub URL)
   route:shop_http_request_duration_seconds:p99_5m:
     class: hard_keep
     why: recorded series used by ShopHighLatency and Shop Overview panel 3
@@ -137,6 +149,18 @@ rules:
 
 # Dashboards and whether people view them. The viewer service loads Shop
 # Overview in a browser; nothing loads Legacy Queue.
+# Declared dependencies outside the rulers (Sprint 2 item 7). tvt.yaml points
+# slos.paths at ./slos and mirrors the runbook URL prefix to ./runbooks.
+slos:
+  shop/checkout-success:
+    format: sloth
+    file: slos/shop-checkout.sloth.yml
+    reads: [shop_checkout_attempts_total]
+runbooks:
+  https://github.com/Opsmastery-Summit/tvt-lab/blob/main/runbooks/payment-queue-backlog.md:
+    alerts: [prometheus/ShopPaymentQueueBacklog]
+    reads: [shop_payment_gateway_retries_total]
+
 dashboards:
   shop-overview:
     title: Shop Overview
