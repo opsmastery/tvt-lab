@@ -47,16 +47,18 @@ while true; do
   panel_query 5 prometheus prometheus '"sum by (mode) (rate(node_cpu_seconds_total[1m]))"'
   panel_query 6 loki loki '"{app=\"shop\", level=~\"info|warn|error\"}"'
   panel_query 7 prometheus prometheus '"sum by (probe) (rate(shop_healthcheck_checks_total{result=\"success\"}[1m])) / sum by (probe) (rate(shop_healthcheck_checks_total[1m]))"'
-  panel_query 8 loki loki '"sum by (level) (rate({app=\"shop\", component=\"api\"}[1m]))"'
+  panel_query 8 loki loki '"sum by (level) (rate({app=\"shop\", component=\"api\", level=~\"info|warn|error\"}[1m]))"'
 
   if [ $((round % 3)) -eq 0 ]; then
     curl -fsS -o /dev/null -G "$PROM_URL/api/v1/query" \
       --data-urlencode 'query=node_memory_MemAvailable_bytes' \
       || echo "viewer: ad hoc query failed"
     # On-call digging into failed health checks only: references /healthz
-    # lines, but never the successful ones.
+    # lines, but never the successful ones. Failures are logged at warn; the
+    # level matcher keeps the query off the debug stream (Loki reads every
+    # stream a selector matches, whatever the line filters).
     curl -fsS -o /dev/null -G "$LOKI_URL/loki/api/v1/query_range" \
-      --data-urlencode 'query={app="shop", component="api"} |= "route=/healthz" != "status=200"' \
+      --data-urlencode 'query={app="shop", component="api", level=~"warn|error"} |= "route=/healthz" != "status=200"' \
       --data-urlencode 'limit=100' \
       || echo "viewer: ad hoc log query failed"
   fi
