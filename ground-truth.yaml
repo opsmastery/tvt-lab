@@ -3,7 +3,7 @@
 #
 # Classes:
 #   hard_keep         never recommended (alert, recording rule feeding an alert, Loki alert,
-#                     Grafana-managed alert)
+#                     Grafana-managed alert, SLO, runbook query step)
 #   keep_high         on a viewed dashboard
 #   keep_medium       ad hoc queries only
 #   low               only on a dashboard nobody views
@@ -33,6 +33,18 @@ metrics:
       is Grafana's alert evaluation in the Prometheus query log, every minute from
       Grafana's IP, which by itself would only rank it as ad hoc usage.
     source: Grafana ruler API (/api/prometheus/grafana/api/v1/rules) or provisioning API
+  shop_checkout_attempts_total:
+    class: hard_keep
+    why: >
+      Read only by the Sloth SLO shop/checkout-success (slos/shop-checkout.sloth.yml),
+      which is not loaded into Prometheus. No rule, dashboard or query reads it.
+    source: SLO definitions (tvt.yaml slos.paths)
+  shop_payment_gateway_retries_total:
+    class: hard_keep
+    why: >
+      Read only by step 1 of runbooks/payment-queue-backlog.md, the runbook_url of
+      ShopPaymentQueueBacklog. No rule, dashboard or query reads it.
+    source: alert runbook (tvt.yaml runbooks mirror for the tvt-lab GitHub URL)
   route:shop_http_request_duration_seconds:p99_5m:
     class: hard_keep
     why: recorded series used by ShopHighLatency and Shop Overview panel 3
@@ -137,6 +149,18 @@ rules:
 
 # Dashboards and whether people view them. The viewer service loads Shop
 # Overview in a browser; nothing loads Legacy Queue.
+# Declared dependencies outside the rulers (Sprint 2 item 7). tvt.yaml points
+# slos.paths at ./slos and mirrors the runbook URL prefix to ./runbooks.
+slos:
+  shop/checkout-success:
+    format: sloth
+    file: slos/shop-checkout.sloth.yml
+    reads: [shop_checkout_attempts_total]
+runbooks:
+  https://github.com/Opsmastery-Summit/tvt-lab/blob/main/runbooks/payment-queue-backlog.md:
+    alerts: [prometheus/ShopPaymentQueueBacklog]
+    reads: [shop_payment_gateway_retries_total]
+
 dashboards:
   shop-overview:
     title: Shop Overview
@@ -193,7 +217,7 @@ streams:
     why: Loki alert ShopAuditDenials; also matched by the logs panel
   '{app="shop", component="api", level="debug"}':
     class: route_cold
-    why: about 88% of shop log bytes; excluded by the panel's regex matcher; never queried
+    why: about 88% of shop log bytes; excluded by the level matchers on panels 6 and 8 and the on-call query; never queried
 
 # Line-level findings: patterns inside a stream that is itself kept.
 line_patterns:
@@ -219,7 +243,7 @@ line_patterns:
       not_affected:
         - consumer: Shop Overview panel 6 (logs panel)
           why: displays raw lines; fewer health check lines is the point, nothing depends on them
-        - consumer: ad hoc query {app="shop", component="api"} |= "route=/healthz" != "status=200"
+        - consumer: ad hoc query {app="shop", component="api", level=~"warn|error"} |= "route=/healthz" != "status=200"
           why: line filters exclude status=200, so it only ever reads failures
   healthz_failure:
     stream: '{app="shop", component="api", level="warn"}'
@@ -233,7 +257,9 @@ scrape:
     why: 10s scrapes, but every panel uses $__rate_interval at multi-minute steps over 6h
 
 # Edge cases the lab deliberately exercises:
-#   - regex matcher that excludes a stream (level=~"info|warn|error" does not match debug)
+#   - regex matcher that excludes a stream (level=~"info|warn|error" does not match debug); panels 6
+#     and 8 and the on-call ad hoc query all carry one, because Loki reads every stream a selector
+#     matches, line filters or not
 #   - dashboard template variable referencing a metric (label_values(...))
 #   - transitive hard keep through a recording rule
 #   - recording rule whose own output is unused

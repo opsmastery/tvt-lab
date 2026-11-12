@@ -1,19 +1,27 @@
 # Uses `podman compose`. To use podman-compose directly: make COMPOSE=podman-compose up
 COMPOSE ?= podman compose
+# Live usage logs tvt scan reads (gitignored). Compose's logging paths must
+# be absolute.
+export LAB_LOGS := $(CURDIR)/lab-logs
 
-.PHONY: up up-mimir down reset ps logs export-logs build validate check-live urls autostart autostart-off
+.PHONY: up up-mimir down reset ps logs export-logs build lab-logs validate check-live urls autostart autostart-off
 
-up: build
+up: build lab-logs
 	$(COMPOSE) up -d
 	@$(MAKE) --no-print-directory urls
 
-up-mimir: build
+up-mimir: build lab-logs
 	PROM_CONFIG=prometheus-mimir.yml $(COMPOSE) --profile mimir up -d
 	@$(MAKE) --no-print-directory urls
 	@echo "  Mimir         http://localhost:9009"
 
 build:
 	$(COMPOSE) build shop
+
+# Prometheus (nobody) writes its query log into lab-logs/prometheus.
+lab-logs:
+	mkdir -p lab-logs/prometheus
+	chmod 777 lab-logs/prometheus
 
 down:
 	$(COMPOSE) --profile mimir down
@@ -29,11 +37,11 @@ ps:
 logs:
 	$(COMPOSE) logs -f --tail=50
 
-# Copy the usage logs tvt scan reads to ./lab-logs:
-#   tvt scan ... --prom-query-log lab-logs/query.log --grafana-log 'lab-logs/grafana.log*'
-export-logs:
-	mkdir -p lab-logs
-	$(COMPOSE) exec -T prometheus cat /prometheus/query.log > lab-logs/query.log
+# The Prometheus query log and the Loki and Mimir logs are already live in
+# ./lab-logs. Grafana's file log lives on its data volume: copy it.
+#   tvt scan ... --prom-query-log lab-logs/prometheus/query.log \
+#     --loki-query-log lab-logs/loki.log --grafana-log 'lab-logs/grafana.log*'
+export-logs: lab-logs
 	$(COMPOSE) exec -T grafana sh -c 'cd /var/lib/grafana/logs && tar cf - grafana.log*' | tar xf - -C lab-logs
 	@ls -l lab-logs
 
