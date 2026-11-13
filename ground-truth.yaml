@@ -48,9 +48,11 @@ metrics:
   shop_inventory_sync_last_success_timestamp_seconds:
     class: hard_keep
     why: >
-      Read only by the absent() alert ShopInventorySyncMissing, which returns no
-      series while the sync is healthy. Dropping it, or its job label, would fire
-      the alert. Never a "rule returned nothing for 30 days" finding.
+      Read only by ShopInventorySyncMissing (staleness or absent()), which returns
+      no series while the sync is healthy. Dropping it, or its job label, would fire
+      the alert. Never a "rule returned nothing for 30 days" finding. Seeded
+      Nov 12, 2026: its 30-day expectations hold from Dec 12, 2026.
+    source: Prometheus rules API (absent() expression; no query-log evidence)
   route:shop_http_request_duration_seconds:p99_5m:
     class: hard_keep
     why: recorded series used by ShopHighLatency and Shop Overview panel 3
@@ -105,6 +107,9 @@ labels:
     class: drop_label
     why: panel 4 groups by op only; 2000 possible users drive the cardinality
     check: dropping user_id must not create duplicate series (op stays unique per series after aggregation)
+  shop_inventory_sync_last_success_timestamp_seconds/job:
+    class: hard_keep
+    why: matched by ShopInventorySyncMissing (job="shop"); dropping it would fire the alert
 
 # Every rule in the lab, by name. source is the ruler that evaluates it:
 # prometheus (prometheus/rules/shop.yml), loki (loki/rules) or grafana
@@ -133,7 +138,9 @@ rules:
     group: shop-alerts
     kind: alert
     class: hard_keep
-    why: absent() alert on shop_inventory_sync_last_success_timestamp_seconds; returns nothing by design, never broken
+    why: >
+      staleness plus absent() alert on shop_inventory_sync_last_success_timestamp_seconds;
+      returns nothing by design, never broken (parse.UsesAbsence matches it)
   route:shop_http_request_duration_seconds:p99_5m:
     source: prometheus
     group: shop-recording
@@ -276,6 +283,9 @@ scrape:
 #   - alert-only metric with no dashboard or query
 #   - metric read only by a Grafana-managed alert (invisible to the Prometheus rules API)
 #   - metric read only by a Mimir ruler alert (node_load15; mimir profile only)
+#   - metric read only by an absent() alert that returns nothing while healthy, plus its matched job label
+#   - metric read only by an SLO definition that isn't loaded into Prometheus (Sloth)
+#   - metric read only by a query step in an alert's runbook
 #   - histogram whose _bucket is used but _sum/_count are not
 #   - /healthz: a droppable line pattern inside a kept stream (line-level: reported and handed to zeroreads)
 #   - a query that references /healthz lines but excludes the successful ones (!= "status=200")
