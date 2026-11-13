@@ -6,7 +6,11 @@ ground-truth.yaml:
   used:      shop_http_requests_total, shop_http_request_duration_seconds,
              shop_cart_operations_total (but its user_id label is never used)
   alert-only: shop_payment_queue_depth (Prometheus alert),
-             shop_order_export_lag_seconds (Grafana-managed alert only)
+             shop_order_export_lag_seconds (Grafana-managed alert only),
+             shop_inventory_sync_last_success_timestamp_seconds (staleness
+             plus absent() alert: returns nothing while the sync runs)
+  declared:  shop_checkout_attempts_total (read only by the Sloth SLO in slos/),
+             shop_payment_gateway_retries_total (read only by a runbook step)
   stale:     shop_legacy_* (on a dashboard nobody views)
   waste:     shop_cache_* (30 gauges x 16 shards), shop_feature_flag_evaluations_total,
              shop_cache_hits/requests_total (feed only an unused recording rule)
@@ -32,13 +36,17 @@ import time
 import urllib.request
 import uuid
 
-from prometheus_client import Counter, Gauge, Histogram, start_http_server
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram, start_http_server
 
 LOKI_URL = os.environ.get("LOKI_URL", "http://loki:3100").rstrip("/")
 RPS = float(os.environ.get("REQUESTS_PER_SECOND", "20"))
 PORT = int(os.environ.get("PORT", "8080"))
 # Health checks per second across the simulated fleet (probers x replicas).
 HEALTHCHECKS_PER_SECOND = float(os.environ.get("HEALTHCHECKS_PER_SECOND", "30"))
+# Inventory sync state, to exercise ShopInventorySyncMissing: "ok" advances
+# the last-success timestamp, "stale" sets it once and stops (the staleness
+# branch fires), "missing" never exports it (the absent() branch fires).
+INVENTORY_SYNC = os.environ.get("INVENTORY_SYNC", "ok")
 PROBES = ["kubelet-liveness", "kubelet-readiness", "alb-target-health"]
 REPLICAS = [f"shop-{n}" for n in range(10)]
 
@@ -82,7 +90,9 @@ gateway_retries = Counter(
 # it fires when the series disappears, so it never returns data while healthy.
 # tvt must keep it (hard_keep) and never call the rule broken (Sprint 2 item 18).
 inventory_sync = Gauge(
-    "shop_inventory_sync_last_success_timestamp_seconds", "When the inventory sync last succeeded.")
+    "shop_inventory_sync_last_success_timestamp_seconds", "When the inventory sync last succeeded.",
+    registry=None if INVENTORY_SYNC == "missing" else REGISTRY)
+inventory_sync.set(time.time())
 
 # --- stale dashboard ------------------------------------------------------
 legacy_queue = Gauge("shop_legacy_queue_depth", "Legacy batch queue depth.")
@@ -218,7 +228,8 @@ def background_gauges():
     while True:
         payment_queue.set(max(0, random.gauss(20, 8)))
         order_export_lag.set(max(0, random.gauss(90, 30)))
-        inventory_sync.set(time.time())
+        if INVENTORY_SYNC == "ok":
+            inventory_sync.set(time.time())
         legacy_queue.set(max(0, random.gauss(300, 50)))
         legacy_batch.set(max(1, random.gauss(42, 5)))
         for g in cache_gauges.values():
