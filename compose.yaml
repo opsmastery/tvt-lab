@@ -102,6 +102,7 @@ services:
       LOKI_URL: http://loki:3100
       REQUESTS_PER_SECOND: "20"
       HEALTHCHECKS_PER_SECOND: "30"   # /healthz scenario: probers x replicas
+      INVENTORY_SYNC: ${INVENTORY_SYNC:-ok}   # ok | stale | missing: fires ShopInventorySyncMissing
     depends_on: [loki]
     restart: unless-stopped
 
