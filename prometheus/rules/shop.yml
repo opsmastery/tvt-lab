@@ -29,15 +29,20 @@ groups:
         annotations:
           summary: "Shop 5xx ratio above 5%"
 
-      # Absence alert: returns nothing while the sync runs, so its metric looks
-      # unread to every query log. It is a hard keep, and it is not a broken rule.
+      # Staleness plus absence alert: returns nothing while the sync runs, so its
+      # metric looks unread to every query log. It is a hard keep, and it is not
+      # a broken rule. The staleness branch catches a sync that stopped advancing
+      # (the series stays exported); absent() catches the series disappearing.
+      # INVENTORY_SYNC=stale or missing on the shop makes each branch fire.
       - alert: ShopInventorySyncMissing
-        expr: absent(shop_inventory_sync_last_success_timestamp_seconds{job="shop"})
+        expr: |
+          time() - shop_inventory_sync_last_success_timestamp_seconds{job="shop"} > 600
+          or absent(shop_inventory_sync_last_success_timestamp_seconds{job="shop"})
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "The inventory sync has stopped reporting"
+          summary: "The inventory sync has not succeeded for 10 minutes, or stopped reporting"
 
       # Alert-only metric: on no dashboard and never queried, but must never be dropped.
       - alert: ShopPaymentQueueBacklog
