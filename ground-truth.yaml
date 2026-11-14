@@ -71,6 +71,20 @@ metrics:
   shop_healthcheck_duration_seconds_*:
     class: drop_metric
     why: emitted but on no dashboard, alert or query (low priority; small)
+  shop_revenue_dollars_total:
+    class: keep_medium
+    why: >
+      Read only by the simulated finance agent (agent/agent.sh): a 90-day query_range of
+      sum by (currency) (rate(shop_revenue_dollars_total[1d])) every 15 minutes. An agent
+      naming a metric is a read. In S8 the 90-day range blocks a 30-day retention proposal.
+      Seeded Nov 14, 2026.
+    source: query log (agent client; Mimir logs its user_agent)
+  alertmanager_alerts:
+    class: keep_high
+    why: Alertmanager Health panel 1, viewed every viewer round
+  alertmanager_notifications_total:
+    class: keep_high
+    why: Alertmanager Health panel 2, viewed every viewer round
   shop_legacy_queue_depth:
     class: low
     why: Legacy Queue dashboard, never viewed
@@ -187,6 +201,9 @@ dashboards:
   legacy-queue:
     title: Legacy Queue
     viewed: false
+  alertmanager-health:
+    title: Alertmanager Health
+    viewed: true
 
 # Only with the mimir profile (make up-mimir): what a scan of Mimir
 # (tvt scan --mimir) adds on top of the sections above. The one-shot
@@ -274,6 +291,39 @@ scrape:
   global_scrape_interval:
     class: lower_resolution
     why: 10s scrapes, but every panel uses $__rate_interval at multi-minute steps over 6h
+  alertmanager_job:
+    class: lower_resolution
+    why: >
+      the alertmanager job is scraped every 15s, but its metrics' only reader, the
+      Alertmanager Health dashboard, uses a 1m minimum interval on every panel
+
+# Simulated agent clients (agent/agent.sh, tvt S3 items 5-6). Both query Prometheus
+# directly (the query log shows only their container IP) and Mimir when it runs (its
+# query-frontend log carries user_agent).
+agents:
+  sweep:
+    user_agent: tvt-lab-sweep-agent/1.0 (mcp)
+    query: count by (__name__) ({__name__=~".+"})
+    expect: >
+      a sweep: weak evidence that keeps nothing on its own. Every drop_metric and
+      drop_label above stays a drop despite it. Until tvt treats sweeps as weak
+      (S3 item 6) the scan reads it as touching every metric.
+  finance:
+    user_agent: tvt-lab-finance-agent/1.0 (mcp)
+    query: sum by (currency) (rate(shop_revenue_dollars_total[1d])) over 90 days, step 1d
+    expect: a read of shop_revenue_dollars_total (keep_medium); the 90-day range is retention evidence for S8
+
+# Self-hosted storage (tvt S3 self-hosted price card). Measured on the lab Prometheus,
+# Nov 14, 2026: bytes per sample from
+#   rate(prometheus_tsdb_compaction_chunk_size_bytes_sum[1d])
+#     / rate(prometheus_tsdb_compaction_chunk_samples_sum[1d])
+# = 0.59 (synthetic series compress far better than the 1.5 fallback), with 60,848 head
+# series and 2.25 GB of blocks.
+storage:
+  retention_time: 45d
+  retention_size: 20GB
+  bytes_per_sample: 0.59
+  remote_write: Mimir (make up-mimir), every series
 
 # Edge cases the lab deliberately exercises:
 #   - regex matcher that excludes a stream (level=~"info|warn|error" does not match debug); panels 6
@@ -289,6 +339,8 @@ scrape:
 #   - metric read only by an SLO definition that isn't loaded into Prometheus (Sloth)
 #   - metric read only by a query step in an alert's runbook
 #   - histogram whose _bucket is used but _sum/_count are not
+#   - an agent that sweeps every metric name (keeps nothing) and one that reads a single metric over 90 days
+#   - a job scraped at 15s whose only reader is a dashboard with a 1m step
 #   - /healthz: a droppable line pattern inside a kept stream (line-level: reported and handed to zeroreads)
 #   - a query that references /healthz lines but excludes the successful ones (!= "status=200")
 #   - a LogQL metric query over a whole stream whose values change, but don't break, when lines are dropped

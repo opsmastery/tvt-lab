@@ -14,6 +14,9 @@ scrape_configs:
   - job_name: grafana
     static_configs:
       - targets: ["grafana:3000"]
+  # 15s, while its only reader (the Alertmanager Health dashboard) uses a 1m
+  # step: tvt S3's lower-resolution seed.
   - job_name: alertmanager
+    scrape_interval: 15s
     static_configs:
       - targets: ["alertmanager:9093"]
