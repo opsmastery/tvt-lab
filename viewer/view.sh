@@ -10,7 +10,8 @@
 # About one round in three it also sends an "Explore" query straight to
 # Prometheus (ad hoc usage).
 #
-# The Legacy Queue dashboard is deliberately never queried.
+# The Legacy Queue dashboard is deliberately never queried. Alertmanager
+# Health is viewed every round, its panels at a 1m step.
 
 GRAFANA_URL=${GRAFANA_URL:-http://grafana:3000}
 GRAFANA_AUTH=${GRAFANA_AUTH:-admin:admin}
@@ -19,14 +20,16 @@ LOKI_URL=${LOKI_URL:-http://loki:3100}
 INTERVAL_SECONDS=${INTERVAL_SECONDS:-300}
 DASH=shop-overview
 REFERER="$GRAFANA_URL/d/$DASH/shop-overview?orgId=1"
+AM_DASH=alertmanager-health
+AM_REFERER="$GRAFANA_URL/d/$AM_DASH/alertmanager-health?orgId=1"
 
-panel_query() { # panel_id datasource_type datasource_uid expr
-  body=$(printf '{"from":"now-1h","to":"now","queries":[{"refId":"A","datasource":{"type":"%s","uid":"%s"},"expr":%s,"intervalMs":15000,"maxDataPoints":500}]}' \
-    "$2" "$3" "$4")
+panel_query() { # panel_id datasource_type datasource_uid expr [interval_ms dashboard_uid referer]
+  body=$(printf '{"from":"now-1h","to":"now","queries":[{"refId":"A","datasource":{"type":"%s","uid":"%s"},"expr":%s,"intervalMs":%s,"maxDataPoints":500}]}' \
+    "$2" "$3" "$4" "${5:-15000}")
   curl -fsS -o /dev/null -u "$GRAFANA_AUTH" \
     -H 'Content-Type: application/json' \
-    -H "X-Dashboard-Uid: $DASH" -H "X-Panel-Id: $1" -H 'X-Grafana-Org-Id: 1' \
-    -H "Referer: $REFERER" \
+    -H "X-Dashboard-Uid: ${6:-$DASH}" -H "X-Panel-Id: $1" -H 'X-Grafana-Org-Id: 1' \
+    -H "Referer: ${7:-$REFERER}" \
     -X POST "$GRAFANA_URL/api/ds/query?ds_type=$2" -d "$body" \
     || echo "viewer: panel $1 query failed"
 }
@@ -48,6 +51,12 @@ while true; do
   panel_query 6 loki loki '"{app=\"shop\", level=~\"info|warn|error\"}"'
   panel_query 7 prometheus prometheus '"sum by (probe) (rate(shop_healthcheck_checks_total{result=\"success\"}[1m])) / sum by (probe) (rate(shop_healthcheck_checks_total[1m]))"'
   panel_query 8 loki loki '"sum by (level) (rate({app=\"shop\", component=\"api\", level=~\"info|warn|error\"}[1m]))"'
+
+  # Alertmanager Health: viewed every round, panels at a 1m step.
+  curl -fsS -o /dev/null -u "$GRAFANA_AUTH" -H "Referer: $AM_REFERER" \
+    "$GRAFANA_URL/api/dashboards/uid/$AM_DASH" || echo "viewer: alertmanager dashboard load failed"
+  panel_query 1 prometheus prometheus '"sum by (state) (alertmanager_alerts)"' 60000 "$AM_DASH" "$AM_REFERER"
+  panel_query 2 prometheus prometheus '"sum by (integration) (rate(alertmanager_notifications_total[1m]))"' 60000 "$AM_DASH" "$AM_REFERER"
 
   if [ $((round % 3)) -eq 0 ]; then
     curl -fsS -o /dev/null -G "$PROM_URL/api/v1/query" \
