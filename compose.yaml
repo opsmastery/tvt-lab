@@ -18,6 +18,9 @@ services:
       - --config.file=/etc/prometheus/${PROM_CONFIG:-prometheus.yml}
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=45d   # tvt needs >= 30 days of history
+      # A size cap as well (tvt S3 self-hosted price card): whichever limit is
+      # hit first wins. Kept well above the lab's ~2 GB so time still governs.
+      - --storage.tsdb.retention.size=20GB
       - --web.enable-lifecycle
     ports: ["127.0.0.1:9090:9090"]
     volumes:
@@ -121,6 +124,20 @@ services:
     volumes:
       - ./viewer:/viewer:ro
     depends_on: [grafana]
+    restart: unless-stopped
+
+  agent:
+    # Simulated AI agent clients (agent/agent.sh): one sweeps every metric
+    # name, one asks for a single metric over 90 days. tvt S3 items 5-6.
+    image: docker.io/curlimages/curl:8.15.0
+    entrypoint: ["/bin/sh", "/agent/agent.sh"]
+    environment:
+      PROM_URL: http://prometheus:9090
+      MIMIR_URL: http://mimir:9009/prometheus
+      INTERVAL_SECONDS: "900"
+    volumes:
+      - ./agent:/agent:ro
+    depends_on: [prometheus]
     restart: unless-stopped
 
   mimir:
