@@ -94,6 +94,12 @@ inventory_sync = Gauge(
     registry=None if INVENTORY_SYNC == "missing" else REGISTRY)
 inventory_sync.set(time.time())
 
+# Read ONLY by the simulated finance agent (agent/agent.sh), which asks for a
+# 90-day trend: no rule, dashboard or person reads it. An agent naming a
+# metric is a read (keep_medium), and in tvt S8 that 90-day range blocks a
+# 30-day retention proposal on it.
+revenue = Counter("shop_revenue_dollars", "Revenue booked, by currency.", ["currency"])
+
 # --- stale dashboard ------------------------------------------------------
 legacy_queue = Gauge("shop_legacy_queue_depth", "Legacy batch queue depth.")
 legacy_batch = Gauge("shop_legacy_batch_duration_seconds", "Last legacy batch duration.")
@@ -230,6 +236,8 @@ def background_gauges():
         order_export_lag.set(max(0, random.gauss(90, 30)))
         if INVENTORY_SYNC == "ok":
             inventory_sync.set(time.time())
+        for currency in ("usd", "eur"):
+            revenue.labels(currency).inc(max(0, random.gauss(120, 40)))
         legacy_queue.set(max(0, random.gauss(300, 50)))
         legacy_batch.set(max(1, random.gauss(42, 5)))
         for g in cache_gauges.values():
