@@ -16,6 +16,7 @@ PROM=${PROM:-http://localhost:9090}
 LOKI=${LOKI:-http://localhost:3100}
 GRAFANA=${GRAFANA:-http://localhost:3000}
 GRAFANA_AUTH=${GRAFANA_AUTH:-admin:admin}
+ALLOY=${ALLOY:-http://localhost:12345}
 
 fail=0
 # compare <what> <want file> <got file> <fix>
@@ -53,5 +54,11 @@ else
 fi
 curl -fsS "$@" "$GRAFANA/api/ruler/grafana/api/v1/rules" | jq -r '.[][].rules[].grafana_alert.uid' | sort -u > "$tmp/grafana.got"
 compare "Grafana-managed alerts" "$tmp/grafana.want" "$tmp/grafana.got" "podman compose restart grafana (alert provisioning is read only at start)"
+
+# Alloy (the lab's pipeline): every component in alloy/config.alloy is
+# running and healthy.
+grep -hE '^[a-z_.]+ "[a-z_]+" \{' alloy/config.alloy | sed -E 's/^([a-z_.]+) "([a-z_]+)".*/\1.\2/' | sort -u > "$tmp/alloy.want"
+curl -fsS "$ALLOY/api/v0/web/components" | jq -r '.[] | select(.health.state == "healthy") | .localID' | sort -u > "$tmp/alloy.got"
+compare "Alloy components (healthy)" "$tmp/alloy.want" "$tmp/alloy.got" "make up (or podman compose restart alloy); see podman compose logs alloy"
 
 exit $fail
