@@ -51,6 +51,9 @@ import uuid
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram, start_http_server
 
 LOKI_URL = os.environ.get("LOKI_URL", "http://loki:3100").rstrip("/")
+# The reconciler pushes past the pipeline, straight to Loki: the lab's one
+# signal no pipeline claims (tvt Sprint 2 item 14). Defaults to LOKI_URL.
+RECONCILER_LOKI_URL = os.environ.get("RECONCILER_LOKI_URL", LOKI_URL).rstrip("/")
 RPS = float(os.environ.get("REQUESTS_PER_SECOND", "20"))
 PORT = int(os.environ.get("PORT", "8080"))
 # Health checks per second across the simulated fleet (probers x replicas).
@@ -182,6 +185,7 @@ class LokiShipper:
 
 
 loki = LokiShipper(LOKI_URL)
+reconciler_loki = LokiShipper(RECONCILER_LOKI_URL)
 
 
 def simulate_request():
@@ -258,7 +262,7 @@ def reconciler_loop():
     if RECONCILER_ERROR_SECONDS <= 0:
         return
     while True:
-        loki.log("error", "worker", RECONCILER_ERROR_LINE, app="reconciler")
+        reconciler_loki.log("error", "worker", RECONCILER_ERROR_LINE, app="reconciler")
         time.sleep(RECONCILER_ERROR_SECONDS)
 
 
@@ -290,10 +294,11 @@ def main():
     start_http_server(PORT)
     startup_burst()
     threading.Thread(target=loki.run, daemon=True).start()
+    threading.Thread(target=reconciler_loki.run, daemon=True).start()
     threading.Thread(target=reconciler_loop, daemon=True).start()
     threading.Thread(target=background_gauges, daemon=True).start()
     threading.Thread(target=healthcheck_loop, daemon=True).start()
-    print(f"shop: metrics on :{PORT}, logs to {LOKI_URL}, {RPS} req/s, "
+    print(f"shop: metrics on :{PORT}, logs to {LOKI_URL} (reconciler: {RECONCILER_LOKI_URL}), {RPS} req/s, "
           f"{HEALTHCHECKS_PER_SECOND} health checks/s", flush=True)
     interval = 1.0 / RPS if RPS > 0 else 1.0
     while True:

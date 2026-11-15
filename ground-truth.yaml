@@ -397,6 +397,36 @@ rule_findings:
     - route:shop_http_request_duration_seconds:p99_5m
     - ShopAvailabilityBurn   # a burn-rate alert's 1h window is required, not long_range_window
 
+# Pipelines (tvt Sprint 2 item 14, ADR 0007; S6 item 4 maps signals to them).
+# Names and handles: match tvt's examples/tvt.example.yaml. Each signal maps
+# to exactly the one pipeline whose handles match its labels (metric series
+# labels, or stream labels). Since Nov 15, 2026 22:23 UTC Alloy scrapes the shop
+# and node-exporter (same job and instance labels as before) and ships the
+# shop's logs; Prometheus scrapes itself and the backends.
+pipelines:
+  prometheus-scrape:
+    kind: prometheus
+    files: [prometheus/scrape/lab.yml]
+    handles: ['{job=~"prometheus|loki|grafana|alertmanager"}']
+    jobs: [prometheus, loki, grafana, alertmanager]
+    examples: [prometheus_tsdb_head_series, loki_request_duration_seconds_bucket, grafana_http_request_duration_seconds_bucket, alertmanager_notifications_total]
+  alloy-apps:
+    kind: alloy
+    files: [alloy/config.alloy]
+    handles: ['{job=~"shop|node"}', '{app="shop"}']
+    jobs: [shop, node]
+    streams: ['{app="shop"}']   # every shop stream: api info/warn/error/debug, audit
+    examples: [shop_http_requests_total, shop_cart_operations_total, node_cpu_seconds_total, node_load15]
+  # No pipeline claims the reconciler's stream: the shop container pushes it
+  # straight to Loki (RECONCILER_LOKI_URL), past Alloy. tvt must report it
+  # "unmapped" with its savings, never proposable.
+  unmapped:
+    streams: ['{app="reconciler", component="worker", level="error"}']
+  # Recording-rule outputs are made by the ruler that records them, not by a
+  # pipeline: never "unmapped", and never a pipeline target even when a kept
+  # label matches handles (job:shop_cache_hit_ratio:5m keeps job="shop").
+  rule_outputs: ["route:shop_http_request_duration_seconds:p99_5m", "job:shop_cache_hit_ratio:5m", "shop:checkout_errors:count5m"]
+
 # SLO coverage (tvt S6 item 3). Report only. Services are the lab's owners, as
 # tvt.yaml ownership.owners names them: shop (shop_* metrics, {app="shop"}
 # streams) and reconciler ({app="reconciler"} streams). Paging alerts are
@@ -641,6 +671,12 @@ states:
         why: Shop Overview logs panel
     rules_absent: ["Shop checkout errors (logs)", "shop:checkout_errors:count5m", ShopCheckoutErrorsFromLogs,
       ShopDailyCheckoutsLow, ShopPaymentQueueSpike, ShopLegacyExportStalled, ShopErrorRateHigh]
+  before-alloy:
+    until: 2026-11-15T22:23:00Z
+    about: >
+      Before Alloy joined the data path (tvt Sprint 2 item 14): Prometheus scraped the shop and
+      node-exporter itself and the shop pushed every log line straight to Loki. No pipelines section.
+    pipelines_absent: true
   before-slo-coverage:
     until: 2026-11-15T21:50:00Z
     about: >

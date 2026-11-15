@@ -104,11 +104,30 @@ services:
     image: localhost/tvt-lab-shop:latest
     ports: ["127.0.0.1:8080:8080"]
     environment:
-      LOKI_URL: http://loki:3100
+      # Logs go through Alloy (alloy/config.alloy); the reconciler's skip it.
+      LOKI_URL: http://alloy:3500
+      RECONCILER_LOKI_URL: http://loki:3100
       REQUESTS_PER_SECOND: "20"
       HEALTHCHECKS_PER_SECOND: "30"   # /healthz scenario: probers x replicas
       INVENTORY_SYNC: ${INVENTORY_SYNC:-ok}   # ok | stale | missing: fires ShopInventorySyncMissing
-    depends_on: [loki]
+    depends_on: [alloy]
+    restart: unless-stopped
+
+  alloy:
+    # The lab's pipeline (tvt Sprint 2 item 14, ADR 0007): scrapes the shop and
+    # node-exporter and remote-writes to Prometheus, and ships the shop's logs
+    # to Loki. Its config directory stands in for a pipeline repo.
+    image: docker.io/grafana/alloy:v1.10.0
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+    ports: ["127.0.0.1:12345:12345"]
+    volumes:
+      - ./alloy:/etc/alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on: [prometheus, loki]
     restart: unless-stopped
 
   viewer:
@@ -176,3 +195,4 @@ volumes:
   loki-data:
   grafana-data:
   mimir-data:
+  alloy-data:
