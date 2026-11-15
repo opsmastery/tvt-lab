@@ -320,6 +320,12 @@ rules:
     kind: alert
     class: hard_keep
     why: alert (duplicate of ShopHighErrorRate)
+  ShopAvailabilityBurn:
+    source: prometheus
+    group: shop-slo-burn
+    kind: alert
+    class: hard_keep
+    why: the availability SLO's burn-rate page alert (S6 item 3)
 
 # Rule-efficiency findings (tvt S6 item 1; seeds from tvt Sprint 2 item 12). Report
 # only: tvt never edits rules. Each rule lists exactly the findings tvt must report;
@@ -389,6 +395,23 @@ rule_findings:
     - ShopHealthcheckSlow
     - ShopAuditDenials
     - route:shop_http_request_duration_seconds:p99_5m
+    - ShopAvailabilityBurn   # a burn-rate alert's 1h window is required, not long_range_window
+
+# SLO coverage (tvt S6 item 3). Report only. Services are the lab's owners, as
+# tvt.yaml ownership.owners names them: shop (shop_* metrics, {app="shop"}
+# streams) and reconciler ({app="reconciler"} streams). Paging alerts are
+# severity critical. Each list is exact: anything else tvt lists is wrong.
+slo_coverage:
+  services:
+    shop: {metrics: ["shop_.*"], streams: ['{app="shop"}']}
+    reconciler: {streams: ['{app="reconciler"}']}
+  services_without_slo: [reconciler]
+  # Severity critical and not a burn-rate alert: pages on a threshold.
+  paging_not_burn_rate: [ShopHighErrorRate, ShopPaymentQueueBacklog, ShopPaymentQueueSpike, ShopErrorRateHigh]
+  burn_rate: [ShopAvailabilityBurn]
+  # The checkout SLO declares ShopCheckoutSLOBurn, but no ruler loads it
+  # (the Sloth spec is deliberately not loaded into Prometheus).
+  slos_without_alert: [shop/checkout-success]
 
 # Dashboards and whether people view them. The viewer service loads Shop
 # Overview in a browser; nothing loads Legacy Queue.
@@ -399,6 +422,10 @@ slos:
     format: sloth
     file: slos/shop-checkout.sloth.yml
     reads: [shop_checkout_attempts_total]
+  shop/availability:
+    format: sloth
+    file: slos/shop-availability.sloth.yml
+    reads: [shop_http_requests_total]
 runbooks:
   https://github.com/Opsmastery-Summit/tvt-lab/blob/main/runbooks/payment-queue-backlog.md:
     alerts: [prometheus/ShopPaymentQueueBacklog]
@@ -614,3 +641,9 @@ states:
         why: Shop Overview logs panel
     rules_absent: ["Shop checkout errors (logs)", "shop:checkout_errors:count5m", ShopCheckoutErrorsFromLogs,
       ShopDailyCheckoutsLow, ShopPaymentQueueSpike, ShopLegacyExportStalled, ShopErrorRateHigh]
+  before-slo-coverage:
+    until: 2026-11-15T21:50:00Z
+    about: >
+      Before the SLO coverage seeds (tvt S6 item 3): no availability SLO and no burn-rate alert.
+    rules_absent: [ShopAvailabilityBurn]
+    slos_absent: [shop/availability]
