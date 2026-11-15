@@ -1,0 +1,66 @@
+# Rule-efficiency seeds (tvt Sprint 2 item 12, findings in tvt S6 item 1).
+# Each rule below is a known case; ground-truth.yaml rule_findings lists what
+# tvt must report for it (and that it must report nothing more). None of these
+# changes a signal's class: every metric they read was already a hard keep.
+groups:
+  # The well-built version of "Shop checkout errors (logs)": the Loki ruler
+  # records the error count once a minute (loki/rules/fake/shop-checkout.yml)
+  # and this alert reads the recorded series. No finding.
+  - name: shop-checkout-alerts
+    rules:
+      - alert: ShopCheckoutErrorsFromLogs
+        expr: shop:checkout_errors:count5m > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5 failed checkouts in 5 minutes (from the Loki recording rule)"
+
+  # A [24h] window evaluated every minute: each evaluation re-reads a day of
+  # samples to move the answer by one minute. Finding: long_range_window.
+  - name: shop-daily
+    interval: 1m
+    rules:
+      - alert: ShopDailyCheckoutsLow
+        expr: sum(increase(shop_http_requests_total{route="/checkout"}[24h])) < 10
+        labels:
+          severity: info
+        annotations:
+          summary: "Fewer than 10 checkouts in the last 24 hours"
+
+  # Evaluated every 5s, but shop_payment_queue_depth is scraped every 10s:
+  # every other evaluation sees the same sample. Finding: interval_below_scrape.
+  - name: shop-fast
+    interval: 5s
+    rules:
+      - alert: ShopPaymentQueueSpike
+        expr: shop_payment_queue_depth > 200
+        labels:
+          severity: critical
+        annotations:
+          summary: "Payment queue above 200"
+
+  - name: shop-legacy
+    rules:
+      # The legacy exporter was retired; the metric hasn't existed in the lab
+      # since it started. The alert can never fire: broken, not unused.
+      # Finding: no_series.
+      - alert: ShopLegacyExportStalled
+        expr: rate(shop_legacy_export_batches_total[15m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The legacy export has stopped"
+
+      # Same expression as ShopHighErrorRate (shop-alerts), under another name:
+      # two pages for one condition. Finding: duplicate_rule.
+      - alert: ShopErrorRateHigh
+        expr: |
+          sum(rate(shop_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(shop_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Shop 5xx ratio above 5%"
