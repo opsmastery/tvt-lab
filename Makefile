@@ -55,6 +55,8 @@ validate:
 		docker.io/grafana/loki:3.5.3 -config.file=/etc/loki/loki.yml -verify-config
 	podman run --rm -v ./alertmanager:/etc/alertmanager:ro --entrypoint amtool \
 		docker.io/prom/alertmanager:v0.28.1 check-config /etc/alertmanager/alertmanager.yml
+	podman run --rm -v ./alloy:/etc/alloy:ro \
+		docker.io/grafana/alloy:v1.10.0 fmt /etc/alloy/config.alloy >/dev/null
 
 # Is the running lab what the repo describes? Every rule and Grafana alert
 # on disk must be loaded (Grafana reads alert provisioning only at start).
@@ -67,6 +69,7 @@ urls:
 	@echo "  Prometheus    http://localhost:9090"
 	@echo "  Loki          http://localhost:3100"
 	@echo "  Alertmanager  http://localhost:9093"
+	@echo "  Alloy         http://localhost:12345"
 	@echo "  Shop metrics  http://localhost:8080/metrics"
 
 # Keep the lab collecting across reboots (macOS):
