@@ -1,0 +1,7 @@
+# kind cluster for kube-prometheus-stack (tvt: pinned chart fixtures and the
+# Grafana Cloud test stack). Podman provider: KIND_EXPERIMENTAL_PROVIDER=podman.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: tvt-kps
+nodes:
+  - role: control-plane

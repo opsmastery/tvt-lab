@@ -1,0 +1,30 @@
+# kube-prometheus-stack on the tvt-kps kind cluster.
+# Chart pinned in kps/Makefile (KPS_VERSION). Defaults stay as shipped unless
+# noted, so tvt sees what most teams run: the default kubelet drops, the
+# release-label monitor selector, the bundled rules.
+#
+# Grafana is off: dashboards are read from the Grafana Cloud stack.
+# Remote write to Cloud is in values-cloud.yaml (applied by make kps-cloud).
+
+grafana:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    externalLabels:
+      cluster: tvt-kps            # tells these series apart from tvt-lab's in Cloud
+    retention: 10d                # the chart default, stated so tvt reads it from here too
+    retentionSize: 4GB
+    queryLogFile: query.log       # query evidence for tvt (mounted at /var/log/prometheus)
+    resources:
+      requests:
+        cpu: 200m
+        memory: 768Mi
+      limits:
+        memory: 2Gi
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        memory: 64Mi
