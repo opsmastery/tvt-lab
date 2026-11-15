@@ -1,0 +1,11 @@
+# The well-built version of the Grafana-managed "Shop checkout errors (logs)"
+# alert (tvt Sprint 2 item 12): Loki records the count once a minute, a line
+# filter narrows the lines before the parser, and the Prometheus alert
+# ShopCheckoutErrorsFromLogs reads the recorded series (remote-written into
+# Prometheus by the ruler). No rule finding.
+groups:
+  - name: shop-checkout-recording
+    interval: 1m
+    rules:
+      - record: shop:checkout_errors:count5m
+        expr: sum(count_over_time({app="shop", component="api", level="error"} |= "route=/checkout" | logfmt | route="/checkout" [5m]))
