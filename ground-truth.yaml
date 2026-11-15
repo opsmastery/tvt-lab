@@ -8,6 +8,7 @@
 #   keep_medium       ad hoc queries only
 #   low               only on a dashboard nobody views
 #   drop_metric       no references: recommend dropping
+#   dormant_confirm   no references, but incident-critical by name or tier: ask the owner, never a drop
 #   drop_label        metric is used, but this label is never matched, grouped or joined on
 #   drop_rule         recording rule with no consumers (recommend removing the rule)
 #   route_cold        log stream never queried: recommend cold storage over deletion
@@ -100,12 +101,6 @@ metrics:
   "*_created":
     class: drop_metric
     why: prometheus_client emits a _created series per counter/histogram; never referenced
-  shop_http_request_duration_seconds_sum:
-    class: drop_metric
-    why: only _bucket is used; _sum is unreferenced (low priority, cheap)
-  shop_http_request_duration_seconds_count:
-    class: drop_metric
-    why: only _bucket is used; _count is unreferenced (low priority, cheap)
   shop_cache_hits_total:
     class: drop_metric
     why: only input is the unused recording rule job:shop_cache_hit_ratio:5m
@@ -115,6 +110,73 @@ metrics:
   node_*:
     class: drop_metric
     why: every node-exporter metric except node_cpu_seconds_total and node_memory_MemAvailable_bytes
+  # Unread, but incident-critical by name (tvt's dormant rules: error, latency, saturation,
+  # queue depth). Decided Nov 14, 2026 (tvt S4 item 3): the name rules stay, and these show
+  # as "dormant: confirm" rows that ask the owner, never as drop candidates. Exact names
+  # here override the drop_metric globs above.
+  node_filesystem_device_error:
+    class: dormant_confirm
+    why: never read, but an error signal, so the owner is asked before any drop
+  node_network_receive_errs_total:
+    class: dormant_confirm
+    why: never read, but an error signal, so the owner is asked before any drop
+  node_network_transmit_errs_total:
+    class: dormant_confirm
+    why: never read, but an error signal, so the owner is asked before any drop
+  node_network_transmit_queue_length:
+    class: dormant_confirm
+    why: never read, but a queue-depth signal, so the owner is asked before any drop
+  node_nf_conntrack_stat_insert_failed:
+    class: dormant_confirm
+    why: never read, but an error signal, so the owner is asked before any drop
+  node_scrape_collector_duration_seconds:
+    class: dormant_confirm
+    why: never read, but a latency signal, so the owner is asked before any drop
+  node_softnet_backlog_len:
+    class: dormant_confirm
+    why: never read, but a queue-depth signal, so the owner is asked before any drop
+  node_textfile_scrape_error:
+    class: dormant_confirm
+    why: never read, but an error signal, so the owner is asked before any drop
+  node_timex_estimated_error_seconds:
+    class: dormant_confirm
+    why: never read, but an error signal, so the owner is asked before any drop
+  node_timex_pps_error_total:
+    class: dormant_confirm
+    why: never read, but an error signal, so the owner is asked before any drop
+  node_vmstat_oom_kill:
+    class: dormant_confirm
+    why: never read, but a saturation signal, so the owner is asked before any drop
+  shop_cache_connection_errors:
+    class: dormant_confirm
+    why: never read, but an error signal, so the owner is asked before any drop
+  shop_cache_evictions:
+    class: dormant_confirm
+    why: never read, but a saturation signal, so the owner is asked before any drop
+  shop_cache_get_latency_seconds:
+    class: dormant_confirm
+    why: never read, but a latency signal, so the owner is asked before any drop
+  shop_cache_replication_lag_seconds:
+    class: dormant_confirm
+    why: never read, but a queue-depth signal, so the owner is asked before any drop
+  shop_cache_set_latency_seconds:
+    class: dormant_confirm
+    why: never read, but a latency signal, so the owner is asked before any drop
+  shop_healthcheck_duration_seconds_bucket:
+    class: dormant_confirm
+    why: never read, but a latency signal, so the owner is asked before any drop
+  shop_healthcheck_duration_seconds_count:
+    class: dormant_confirm
+    why: never read, but a latency signal, so the owner is asked before any drop
+  shop_healthcheck_duration_seconds_sum:
+    class: dormant_confirm
+    why: never read, but a latency signal, so the owner is asked before any drop
+  shop_http_request_duration_seconds_count:
+    class: dormant_confirm
+    why: never read, but a latency signal, so the owner is asked before any drop
+  shop_http_request_duration_seconds_sum:
+    class: dormant_confirm
+    why: never read, but a latency signal, so the owner is asked before any drop
 
 labels:
   shop_cart_operations_total/user_id:
