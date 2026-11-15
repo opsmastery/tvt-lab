@@ -55,6 +55,14 @@ ruler:
   rule_path: /loki/rules-temp
   alertmanager_url: http://alertmanager:9093
   enable_api: true
+  # Recording rules (shop:checkout_errors:count5m) are written into
+  # Prometheus, which runs with --web.enable-remote-write-receiver.
+  remote_write:
+    enabled: true
+    client:
+      url: http://prometheus:9090/api/v1/write
+  wal:
+    dir: /loki/ruler-wal
   ring:
     kvstore:
       store: inmemory
