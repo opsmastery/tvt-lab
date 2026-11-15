@@ -37,6 +37,30 @@
           "text": "All",
           "value": "$__all"
         }
+      },
+      {
+        "name": "counter",
+        "label": "Counter",
+        "type": "custom",
+        "query": "shop_http_requests_total,shop_cart_operations_total",
+        "options": [
+          {
+            "text": "shop_http_requests_total",
+            "value": "shop_http_requests_total",
+            "selected": true
+          },
+          {
+            "text": "shop_cart_operations_total",
+            "value": "shop_cart_operations_total",
+            "selected": false
+          }
+        ],
+        "current": {
+          "text": "shop_http_requests_total",
+          "value": "shop_http_requests_total"
+        },
+        "includeAll": false,
+        "multi": false
       }
     ]
   },
@@ -303,6 +327,31 @@
         "overrides": []
       },
       "options": {}
+    },
+    {
+      "id": 9,
+      "title": "Counter rate ($counter)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(${counter}[$__rate_interval]))"
+        }
+      ]
     }
   ]
 }
