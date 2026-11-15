@@ -1,0 +1,26 @@
+groups:
+  # S6 item 3 seed: the shop availability SLO's fast-burn page alert
+  # (slos/shop-availability.sloth.yml): 14.4x the error budget of a 99.9%
+  # objective over both 1h and 5m. A paging alert that IS a burn-rate alert.
+  # Its 1h window over a 30s interval is what a burn-rate alert needs, not a
+  # long_range_window finding.
+  - name: shop-slo-burn
+    rules:
+      - alert: ShopAvailabilityBurn
+        expr: |
+          (
+            sum(rate(shop_http_requests_total{status=~"5.."}[1h]))
+              / sum(rate(shop_http_requests_total[1h])) > (14.4 * 0.001)
+          )
+          and
+          (
+            sum(rate(shop_http_requests_total{status=~"5.."}[5m]))
+              / sum(rate(shop_http_requests_total[5m])) > (14.4 * 0.001)
+          )
+        for: 2m
+        labels:
+          severity: critical
+          sloth_slo: availability
+          sloth_service: shop
+        annotations:
+          summary: "Shop availability SLO burning error budget 14.4x too fast"
