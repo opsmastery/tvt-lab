@@ -62,7 +62,9 @@ INVENTORY_SYNC = os.environ.get("INVENTORY_SYNC", "ok")
 PROBES = ["kubelet-liveness", "kubelet-readiness", "alb-target-health"]
 REPLICAS = [f"shop-{n}" for n in range(10)]
 STARTUP_BURST_LINES = int(os.environ.get("STARTUP_BURST_LINES", "5000"))
-STARTUP_BURST_LINE = 'config: key "cache.ttl" is deprecated and ignored, using the default of 300s'
+# logfmt, like the rest of the api stream: Loki's pattern ingester tokenizes a
+# logfmt stream as logfmt and finds no pattern in a plain-text line.
+STARTUP_BURST_LINE = 'msg="deprecated config key ignored, using the default" key=cache.ttl default=300s'
 RECONCILER_ERROR_SECONDS = float(os.environ.get("RECONCILER_ERROR_SECONDS", "2"))
 RECONCILER_ERROR_LINE = "reconcile failed: ledger upstream unavailable, will retry"
 

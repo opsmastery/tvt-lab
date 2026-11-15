@@ -377,7 +377,7 @@ line_patterns:
     why: read by the on-call ad hoc query; also rare and cheap
   startup_burst:
     stream: '{app="shop", component="api", level="warn"}'
-    pattern: 'config: key "cache.ttl" is deprecated and ignored, using the default of 300s'
+    pattern: 'msg="deprecated config key ignored, using the default" key=cache.ttl default=300s'
     class: repeated_line
     why: >
       Identical text, logged STARTUP_BURST_LINES (5000) times in a burst on every shop
