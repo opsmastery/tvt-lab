@@ -355,12 +355,26 @@ rule_findings:
       - kind: no_series
         detail: shop_legacy_export_batches_total has no series (never existed in the lab)
         fix: the rule is broken, not unused; fix its metric name or delete it
+  # A duplicate pair has no original: tvt flags both copies, each naming the other.
   ShopErrorRateHigh:
     source: prometheus
     findings:
       - kind: duplicate_rule
         detail: same expression as ShopHighErrorRate (shop-alerts)
         fix: keep one
+  ShopHighErrorRate:
+    source: prometheus
+    findings:
+      - kind: duplicate_rule
+        detail: same expression as ShopErrorRateHigh (shop-legacy)
+        fix: keep one
+  # Every Grafana-managed alert on Loki or Prometheus is a finding (tvt S6 item 1),
+  # including the original hard-keep seed.
+  Shop order export lag:
+    source: grafana
+    findings:
+      - kind: grafana_managed_alert
+        fix: move it to the Prometheus ruler
   job:shop_cache_hit_ratio:5m:
     source: prometheus
     findings:
@@ -369,14 +383,12 @@ rule_findings:
   no_findings:
     - ShopCheckoutErrorsFromLogs
     - shop:checkout_errors:count5m
-    - ShopHighErrorRate
     - ShopInventorySyncMissing
     - ShopHighLatency
     - ShopPaymentQueueBacklog
     - ShopHealthcheckSlow
     - ShopAuditDenials
     - route:shop_http_request_duration_seconds:p99_5m
-    - Shop order export lag
 
 # Dashboards and whether people view them. The viewer service loads Shop
 # Overview in a browser; nothing loads Legacy Queue.
