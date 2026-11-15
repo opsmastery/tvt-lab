@@ -118,14 +118,24 @@ services:
     # node-exporter and remote-writes to Prometheus, and ships the shop's logs
     # to Loki. Its config directory stands in for a pipeline repo.
     image: docker.io/grafana/alloy:v1.10.0
+    # ALLOY_OUTPUT=cloud also forwards a free-tier subset to the Grafana
+    # Cloud test stack (alloy/outputs/cloud.alloy; GCLOUD_* from your shell,
+    # never this repo). Default local: nothing leaves the lab.
     command:
       - run
-      - /etc/alloy/config.alloy
+      - /etc/alloy/run
       - --server.http.listen-addr=0.0.0.0:12345
       - --storage.path=/var/lib/alloy/data
     ports: ["127.0.0.1:12345:12345"]
+    environment:
+      GCLOUD_HOSTED_METRICS_URL: ${GCLOUD_HOSTED_METRICS_URL:-}
+      GCLOUD_HOSTED_METRICS_ID: ${GCLOUD_HOSTED_METRICS_ID:-}
+      GCLOUD_HOSTED_LOGS_URL: ${GCLOUD_HOSTED_LOGS_URL:-}
+      GCLOUD_HOSTED_LOGS_ID: ${GCLOUD_HOSTED_LOGS_ID:-}
+      GCLOUD_RW_API_KEY: ${GCLOUD_RW_API_KEY:-}
     volumes:
-      - ./alloy:/etc/alloy:ro
+      - ./alloy/config.alloy:/etc/alloy/run/config.alloy:ro
+      - ./alloy/outputs/${ALLOY_OUTPUT:-local}.alloy:/etc/alloy/run/output.alloy:ro
       - alloy-data:/var/lib/alloy/data
     depends_on: [prometheus, loki]
     restart: unless-stopped

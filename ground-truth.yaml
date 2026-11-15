@@ -649,6 +649,23 @@ storage:
 
 # Lab states (tvt S5 benchmark; also S15's --as-of). The sections above are the
 # current state. Each earlier state lists only what differed, as it was then.
+# Grafana Cloud test stack (tvt S6 item 6, Sprint 2 item 11): with
+# ALLOY_OUTPUT=cloud (make cloud), Alloy also forwards a free-tier subset
+# (alloy/outputs/cloud.alloy). Only Alloy's signals go: Prometheus' own jobs
+# (prometheus-scrape) and the reconciler stream (straight to Loki) never
+# reach Cloud. What Cloud has of the seeds, measured Nov 15, 2026:
+cloud:
+  plan: free                    # 10k active series, 50 GB logs a month, 14 days retention
+  jobs: [shop, node]
+  streams: ['{app="shop", component="api", level=~"info|warn|error"}', '{app="shop", component="audit"}']
+  # Seeds that stay local, so a Cloud scan can't be scored on them.
+  absent:
+    metrics: ["*_created", "shop_feature_flag_evaluations_total{user_id}"]
+    streams: ['{app="shop", component="api", level="debug"}', '{app="reconciler", component="worker", level="error"}']
+    jobs: [prometheus, loki, grafana, alertmanager]
+  series: ~7000                 # shop ~1.2k + node ~0.6k + shop_cart_operations_total{user_id} ~5k
+  logs_per_day: 570MB
+
 states:
   before-deploy:
     until: 2026-11-15
