@@ -177,6 +177,16 @@ metrics:
   shop_http_request_duration_seconds_sum:
     class: dormant_confirm
     why: never read, but a latency signal, so the owner is asked before any drop
+  # Named in a runbook's prose or a postmortem, never queried (tvt S4 item 3): dormant, so
+  # the owner is asked, never a drop. Seeded Nov 14, 2026.
+  node_load15:
+    class: dormant_confirm
+    why: named in runbooks/payment-queue-backlog.md prose, outside its query step
+    source: runbook mention
+  node_context_switches_total:
+    class: dormant_confirm
+    why: named in postmortems/2026-10-24-checkout-slowdown.md (tvt.yaml postmortems.paths)
+    source: postmortem mention
 
 labels:
   shop_cart_operations_total/user_id:
@@ -401,6 +411,7 @@ storage:
 #   - metric read only by an SLO definition that isn't loaded into Prometheus (Sloth)
 #   - metric read only by a query step in an alert's runbook
 #   - histogram whose _bucket is used but _sum/_count are not
+#   - metrics only named (not queried) in a runbook's prose and in a postmortem: dormant_confirm
 #   - an agent that sweeps every metric name (keeps nothing) and one that reads a single metric over 90 days
 #   - a job scraped at 15s whose only reader is a dashboard with a 1m step
 #   - /healthz: a droppable line pattern inside a kept stream (line-level: reported and handed to zeroreads)
