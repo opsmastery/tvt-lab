@@ -13,6 +13,9 @@ sum(rate(shop_payment_gateway_retries_total[5m]))
 More than about 0.5/s: the gateway is degraded. Check its status page before
 touching the workers.
 
+If the host itself looks busy, compare node_load15 with the CPU count before
+blaming the gateway.
+
 ## 2. Restart the workers
 
 Only if retries are normal:
