@@ -1,0 +1,25 @@
+# Sloth SLO spec (https://sloth.dev) whose page alert IS loaded: the
+# multiwindow burn-rate alert ShopAvailabilityBurn in
+# prometheus/rules/slo-burn.yml, written as Sloth's fast-burn page alert
+# would read it (without Sloth's recording rules, so no new metrics). For
+# tvt's SLO coverage report (S6 item 3): this SLO has its alert; the
+# checkout SLO declares one no ruler loads.
+version: "prometheus/v1"
+service: "shop"
+labels:
+  team: shop
+slos:
+  - name: "availability"
+    objective: 99.9
+    description: "Shop requests that don't fail with a server error."
+    sli:
+      events:
+        error_query: sum(rate(shop_http_requests_total{status=~"5.."}[{{.window}}]))
+        total_query: sum(rate(shop_http_requests_total[{{.window}}]))
+    alerting:
+      name: ShopAvailabilityBurn
+      page_alert:
+        labels:
+          severity: critical
+      ticket_alert:
+        disable: true
