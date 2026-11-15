@@ -1,0 +1,16 @@
+# The "deploy that adds a reader" (tvt S5, lab-backlog S5): added Nov 15, 2026.
+# Before it, shop_healthcheck_duration_seconds_bucket had no reader
+# (dormant_confirm); from here on this alert makes it a hard keep. tvt's
+# benchmark has a frozen snapshot of each side (testdata/bench before/after),
+# also used by S15's --as-of.
+groups:
+  - name: shop-healthcheck
+    rules:
+      - alert: ShopHealthcheckSlow
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(shop_healthcheck_duration_seconds_bucket[5m]))) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 health check latency above 50ms"
