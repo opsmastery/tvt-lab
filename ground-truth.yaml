@@ -61,6 +61,12 @@ metrics:
   route:shop_http_request_duration_seconds:p99_5m:
     class: hard_keep
     why: recorded series used by ShopHighLatency and Shop Overview panel 3
+  shop:checkout_errors:count5m:
+    class: hard_keep
+    why: >
+      Recorded by the Loki ruler (loki/rules/fake/shop-checkout.yml) and remote-written
+      into Prometheus, so it has no scrape job; read by ShopCheckoutErrorsFromLogs.
+      Seeded Nov 15, 2026 (rule-efficiency seeds).
   shop_cart_operations_total:
     class: keep_high
     why: Shop Overview panel 4, sum by (op); also an option of panel 9's $counter variable
@@ -269,6 +275,108 @@ rules:
     kind: alert
     class: hard_keep
     why: Grafana-managed alert on shop_order_export_lag_seconds
+  # Rule-efficiency seeds (Nov 15, 2026; prometheus/rules/rule-efficiency.yml,
+  # loki/rules/fake/shop-checkout.yml, grafana shop-grafana-log-alerts). Every one
+  # reads only signals that were already protected; rule_findings says what's wrong.
+  Shop checkout errors (logs):
+    source: grafana
+    group: shop-grafana-log-alerts
+    kind: alert
+    class: hard_keep
+    why: Grafana-managed alert on {app="shop", component="api", level="error"}, every 30s
+  shop:checkout_errors:count5m:
+    source: loki
+    group: shop-checkout-recording
+    kind: record
+    class: hard_keep
+    why: feeds ShopCheckoutErrorsFromLogs (remote-written into Prometheus)
+  ShopCheckoutErrorsFromLogs:
+    source: prometheus
+    group: shop-checkout-alerts
+    kind: alert
+    class: hard_keep
+    why: alert on the Loki recording rule's output
+  ShopDailyCheckoutsLow:
+    source: prometheus
+    group: shop-daily
+    kind: alert
+    class: hard_keep
+    why: alert ([24h] window every minute)
+  ShopPaymentQueueSpike:
+    source: prometheus
+    group: shop-fast
+    kind: alert
+    class: hard_keep
+    why: alert (5s interval)
+  ShopLegacyExportStalled:
+    source: prometheus
+    group: shop-legacy
+    kind: alert
+    class: hard_keep
+    why: alert on a metric that doesn't exist (broken, not unused)
+  ShopErrorRateHigh:
+    source: prometheus
+    group: shop-legacy
+    kind: alert
+    class: hard_keep
+    why: alert (duplicate of ShopHighErrorRate)
+
+# Rule-efficiency findings (tvt S6 item 1; seeds from tvt Sprint 2 item 12). Report
+# only: tvt never edits rules. Each rule lists exactly the findings tvt must report;
+# any other rule finding on a lab rule is a false positive. no_findings lists rules
+# that must get none (the well-built versions, and absent() and its kin).
+rule_findings:
+  Shop checkout errors (logs):
+    source: grafana
+    findings:
+      - kind: grafana_managed_alert
+        fix: move it to the Loki ruler (or alert on a Loki recording rule)
+      - kind: logql_parses_raw_logs
+        fix: >
+          a Loki recording rule computes the count once a minute; alert on its output
+          (shop:checkout_errors:count5m and ShopCheckoutErrorsFromLogs are the fixed version)
+      - kind: no_line_filter_before_parser
+        fix: add |= "route=/checkout" before | logfmt, so only matching lines are parsed
+  ShopDailyCheckoutsLow:
+    source: prometheus
+    findings:
+      - kind: long_range_window
+        detail: a [24h] range evaluated every 1m
+        fix: evaluate it every 15m or more, or record a shorter window and sum it
+  ShopPaymentQueueSpike:
+    source: prometheus
+    findings:
+      - kind: interval_below_scrape
+        detail: 5s evaluation interval, shop job scraped every 10s
+        fix: evaluate at the scrape interval (10s) or slower
+  ShopLegacyExportStalled:
+    source: prometheus
+    findings:
+      - kind: no_series
+        detail: shop_legacy_export_batches_total has no series (never existed in the lab)
+        fix: the rule is broken, not unused; fix its metric name or delete it
+  ShopErrorRateHigh:
+    source: prometheus
+    findings:
+      - kind: duplicate_rule
+        detail: same expression as ShopHighErrorRate (shop-alerts)
+        fix: keep one
+  job:shop_cache_hit_ratio:5m:
+    source: prometheus
+    findings:
+      - kind: unread_recording_rule
+        fix: remove the rule (it is also drop_rule above)
+  no_findings:
+    - ShopCheckoutErrorsFromLogs
+    - shop:checkout_errors:count5m
+    - ShopHighErrorRate
+    - ShopInventorySyncMissing
+    - ShopHighLatency
+    - ShopPaymentQueueBacklog
+    - ShopHealthcheckSlow
+    - ShopAuditDenials
+    - route:shop_http_request_duration_seconds:p99_5m
+    - Shop order export lag
 
 # Dashboards and whether people view them. The viewer service loads Shop
 # Overview in a browser; nothing loads Legacy Queue.
@@ -336,8 +444,11 @@ streams:
     class: keep_high
     why: same panel
   '{app="shop", component="api", level="error"}':
-    class: keep_high
-    why: same panel
+    class: hard_keep
+    why: >
+      the Grafana-managed alert "Shop checkout errors (logs)" and the Loki recording rule
+      shop:checkout_errors:count5m (which feeds ShopCheckoutErrorsFromLogs); also the logs
+      panel. keep_high until the rule-efficiency seeds (Nov 15, 2026).
   '{app="shop", component="audit", level="info"}':
     class: hard_keep
     why: Loki alert ShopAuditDenials; also matched by the logs panel
@@ -462,6 +573,10 @@ storage:
 #     (shop_cart_operation_total), a service logging one identical error line all day (reconciler), and
 #     a panel reading its metric through a custom variable (Shop Overview panel 9, ${counter})
 #   - an identical line logged in a burst at startup (repeated_line)
+#   - rule-efficiency cases (rule_findings): a Grafana-managed LogQL alert parsing raw logs every
+#     30s with no line filter, and its well-built version (Loki recording rule plus a Prometheus
+#     alert); a [24h] window every minute; a 5s interval on a 10s scrape; an alert on a metric that
+#     doesn't exist; a duplicate alert
 
 # Lab states (tvt S5 benchmark; also S15's --as-of). The sections above are the
 # current state. Each earlier state lists only what differed, as it was then.
@@ -476,3 +591,14 @@ states:
         class: dormant_confirm
         why: never read, but a latency signal, so the owner is asked before any drop
     rules_absent: [ShopHealthcheckSlow]
+  before-rule-efficiency:
+    until: 2026-11-15T20:50:00Z
+    about: >
+      Before the rule-efficiency seeds (tvt Sprint 2 item 12): no rule_findings rules beyond
+      job:shop_cache_hit_ratio:5m, and the error stream was read only by the logs panel.
+    streams:
+      '{app="shop", component="api", level="error"}':
+        class: keep_high
+        why: Shop Overview logs panel
+    rules_absent: ["Shop checkout errors (logs)", "shop:checkout_errors:count5m", ShopCheckoutErrorsFromLogs,
+      ShopDailyCheckoutsLow, ShopPaymentQueueSpike, ShopLegacyExportStalled, ShopErrorRateHigh]

@@ -53,3 +53,52 @@ groups:
           severity: warning
         annotations:
           summary: Orders haven't been exported to the warehouse for over 5 minutes
+
+  # Rule-efficiency seed (tvt Sprint 2 item 12): a Grafana-managed alert on
+  # Loki that parses every error line of the api stream every 30s, with no
+  # line filter before the parser. Findings: grafana_managed_alert (move it
+  # to the Loki ruler), logql_parses_raw_logs (record it first) and
+  # no_line_filter_before_parser. The fixed version is the Loki recording
+  # rule shop:checkout_errors:count5m plus ShopCheckoutErrorsFromLogs.
+  - orgId: 1
+    name: shop-grafana-log-alerts
+    folder: tvt-lab
+    interval: 30s
+    rules:
+      - uid: shop-checkout-errors-logs
+        title: Shop checkout errors (logs)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              refId: A
+              expr: sum(count_over_time({app="shop", component="api", level="error"} | logfmt | route="/checkout" [5m]))
+              queryType: instant
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 5 failed checkouts in 5 minutes (parsed from logs by Grafana)
