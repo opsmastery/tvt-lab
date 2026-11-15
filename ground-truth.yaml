@@ -173,8 +173,10 @@ metrics:
     class: dormant_confirm
     why: never read, but a latency signal, so the owner is asked before any drop
   shop_healthcheck_duration_seconds_bucket:
-    class: dormant_confirm
-    why: never read, but a latency signal, so the owner is asked before any drop
+    class: hard_keep
+    why: >
+      ShopHealthcheckSlow (prometheus/rules/healthcheck.yml), the deploy that adds a
+      reader, Nov 15, 2026. Before it: dormant_confirm (see states:).
   shop_healthcheck_duration_seconds_count:
     class: dormant_confirm
     why: never read, but a latency signal, so the owner is asked before any drop
@@ -249,6 +251,12 @@ rules:
     kind: record
     class: drop_rule
     why: no alert, dashboard or query uses it
+  ShopHealthcheckSlow:
+    source: prometheus
+    group: shop-healthcheck
+    kind: alert
+    class: hard_keep
+    why: the deploy that adds a reader (states:); reads shop_healthcheck_duration_seconds_bucket
   ShopAuditDenials:
     source: loki
     group: shop-audit
@@ -454,3 +462,17 @@ storage:
 #     (shop_cart_operation_total), a service logging one identical error line all day (reconciler), and
 #     a panel reading its metric through a custom variable (Shop Overview panel 9, ${counter})
 #   - an identical line logged in a burst at startup (repeated_line)
+
+# Lab states (tvt S5 benchmark; also S15's --as-of). The sections above are the
+# current state. Each earlier state lists only what differed, as it was then.
+states:
+  before-deploy:
+    until: 2026-11-15
+    about: >
+      Before the deploy that added ShopHealthcheckSlow (prometheus/rules/healthcheck.yml):
+      its histogram had no reader. tvt's benchmark has a frozen snapshot of each side.
+    metrics:
+      shop_healthcheck_duration_seconds_bucket:
+        class: dormant_confirm
+        why: never read, but a latency signal, so the owner is asked before any drop
+    rules_absent: [ShopHealthcheckSlow]
