@@ -2,12 +2,8 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
-  - job_name: shop
-    static_configs:
-      - targets: ["shop:8080"]
-  - job_name: node
-    static_configs:
-      - targets: ["node-exporter:9100"]
+  # shop and node are scraped by Alloy (alloy/config.alloy) since Nov 15,
+  # with the same job and instance labels, and remote-written here.
   - job_name: loki
     static_configs:
       - targets: ["loki:3100"]
