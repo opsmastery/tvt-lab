@@ -51,6 +51,9 @@ while true; do
   panel_query 6 loki loki '"{app=\"shop\", level=~\"info|warn|error\"}"'
   panel_query 7 prometheus prometheus '"sum by (probe) (rate(shop_healthcheck_checks_total{result=\"success\"}[1m])) / sum by (probe) (rate(shop_healthcheck_checks_total[1m]))"'
   panel_query 8 loki loki '"sum by (level) (rate({app=\"shop\", component=\"api\", level=~\"info|warn|error\"}[1m]))"'
+  # Panel 9 reads its metric through the $counter variable (tvt S5 distractor);
+  # Grafana sends the current value, shop_http_requests_total.
+  panel_query 9 prometheus prometheus '"sum(rate(shop_http_requests_total[1m]))"'
 
   # Alertmanager Health: viewed every round, panels at a 1m step.
   curl -fsS -o /dev/null -u "$GRAFANA_AUTH" -H "Referer: $AM_REFERER" \

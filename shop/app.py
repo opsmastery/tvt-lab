@@ -22,6 +22,18 @@ line in the same api stream as real traffic. Those success lines are the
 largest share of the info stream, and nothing reads them. Failures (503) are
 logged at warn and are queried ad hoc.
 
+Distractors (tvt S5 item 2): none may change a recommendation.
+  shop_cart_operation_total: a near-identical name to the read
+             shop_cart_operations_total (a leftover duplicate counter); never read
+  reconciler: a background service logging the same error line all day
+             ({app="reconciler", component="worker", level="error"}); never read
+  (the third, a dashboard reading a metric through a variable, is Shop
+  Overview panel 9)
+
+Startup burst (tvt S5 item 3): on every start the shop logs one identical
+warn line STARTUP_BURST_LINES times, a repeated-line finding in the warn/api
+stream for as long as Loki's pattern ingester keeps it (about 3 hours).
+
 Logs are pushed to Loki as streams {app="shop", level, component}:
   info/warn/error api logs  -> on the Shop Overview logs panel
   debug api logs            -> high volume, never queried (cold-storage candidate)
@@ -49,6 +61,10 @@ HEALTHCHECKS_PER_SECOND = float(os.environ.get("HEALTHCHECKS_PER_SECOND", "30"))
 INVENTORY_SYNC = os.environ.get("INVENTORY_SYNC", "ok")
 PROBES = ["kubelet-liveness", "kubelet-readiness", "alb-target-health"]
 REPLICAS = [f"shop-{n}" for n in range(10)]
+STARTUP_BURST_LINES = int(os.environ.get("STARTUP_BURST_LINES", "5000"))
+STARTUP_BURST_LINE = 'config: key "cache.ttl" is deprecated and ignored, using the default of 300s'
+RECONCILER_ERROR_SECONDS = float(os.environ.get("RECONCILER_ERROR_SECONDS", "2"))
+RECONCILER_ERROR_LINE = "reconcile failed: ledger upstream unavailable, will retry"
 
 ROUTES = ["/", "/products", "/product/:id", "/cart", "/checkout", "/search", "/account"]
 METHODS = {"/cart": ["GET", "POST", "DELETE"], "/checkout": ["POST"]}
@@ -62,6 +78,9 @@ request_duration = Histogram(
     "shop_http_request_duration_seconds", "HTTP request latency.", ["route"])
 cart_ops = Counter(
     "shop_cart_operations", "Cart operations.", ["op", "user_id"])  # user_id: droppable label
+# Distractor: one letter off the read shop_cart_operations_total, never read.
+cart_op_legacy = Counter(
+    "shop_cart_operation", "Cart operations (legacy duplicate counter).", ["op"])
 
 healthchecks = Counter(
     "shop_healthcheck_checks", "Health checks served.", ["probe", "result"])
@@ -134,8 +153,8 @@ class LokiShipper:
         self.lock = threading.Lock()
         self.buf = {}
 
-    def log(self, level, component, line):
-        key = (level, component)
+    def log(self, level, component, line, app="shop"):
+        key = (app, level, component)
         entry = [str(time.time_ns()), line]
         with self.lock:
             self.buf.setdefault(key, []).append(entry)
@@ -148,8 +167,8 @@ class LokiShipper:
             if not buf:
                 continue
             streams = [
-                {"stream": {"app": "shop", "level": lvl, "component": comp}, "values": vals}
-                for (lvl, comp), vals in buf.items()
+                {"stream": {"app": app, "level": lvl, "component": comp}, "values": vals}
+                for (app, lvl, comp), vals in buf.items()
             ]
             body = json.dumps({"streams": streams}).encode()
             req = urllib.request.Request(
@@ -181,7 +200,9 @@ def simulate_request():
         if random.random() < 0.1:
             gateway_retries.inc()
     if route == "/cart":
-        cart_ops.labels({"GET": "view", "POST": "add", "DELETE": "remove"}[method], user).inc()
+        op = {"GET": "view", "POST": "add", "DELETE": "remove"}[method]
+        cart_ops.labels(op, user).inc()
+        cart_op_legacy.labels(op).inc()
     for flag in random.sample(FLAGS, 2):
         flag_evals.labels(flag, random.choice(["on", "off"]), user).inc()
     cache_requests.inc()
@@ -229,6 +250,22 @@ def healthcheck_loop():
         time.sleep(interval * random.uniform(0.5, 1.5))
 
 
+def reconciler_loop():
+    """The background-error distractor: another service logging one identical
+    error line all day. Nothing reads it."""
+    if RECONCILER_ERROR_SECONDS <= 0:
+        return
+    while True:
+        loki.log("error", "worker", RECONCILER_ERROR_LINE, app="reconciler")
+        time.sleep(RECONCILER_ERROR_SECONDS)
+
+
+def startup_burst():
+    """One identical warn line, many times, at start (the repeated-line case)."""
+    for _ in range(STARTUP_BURST_LINES):
+        loki.log("warn", "api", STARTUP_BURST_LINE)
+
+
 def background_gauges():
     shards = [str(s) for s in range(16)]
     while True:
@@ -249,7 +286,9 @@ def background_gauges():
 
 def main():
     start_http_server(PORT)
+    startup_burst()
     threading.Thread(target=loki.run, daemon=True).start()
+    threading.Thread(target=reconciler_loop, daemon=True).start()
     threading.Thread(target=background_gauges, daemon=True).start()
     threading.Thread(target=healthcheck_loop, daemon=True).start()
     print(f"shop: metrics on :{PORT}, logs to {LOKI_URL}, {RPS} req/s, "
