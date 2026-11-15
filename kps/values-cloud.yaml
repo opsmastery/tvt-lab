@@ -1,0 +1,41 @@
+# Remote write from tvt-kps to the Grafana Cloud test stack (free tier).
+# Applied on top of values.yaml by make kps-cloud. The URL is passed with
+# --set from GCLOUD_HOSTED_METRICS_URL; the credentials live in the
+# grafana-cloud-metrics Secret that make kps-cloud-secret creates from
+# GCLOUD_HOSTED_METRICS_ID and GCLOUD_RW_API_KEY. Nothing secret is in this repo.
+#
+# Budget (measured Nov 15, 2026, single-node kind, chart 93.3.0): the cluster
+# has ~35k series locally (apiserver ~24k, mostly histogram buckets). tvt-lab's
+# Alloy output already uses ~7k of the free tier's 10k, so this keeps ~2.3k:
+#   kube-state-metrics kube_* minus *_labels, *_annotations, *_created   ~950
+#   cAdvisor: CPU, memory, network and threads per container             ~380
+#   recording rule outputs (names with a colon) and ALERTS               ~640
+#   apiserver_request_total                                              ~190
+#   node-exporter core (CPU, memory, filesystem, disk, network, load)    ~110
+#   kubelet pod and volume gauges, and up for every job                  ~20
+# Everything else stays local, so a Cloud scan sees the subset and the local
+# Prometheus sees all of it. Kept on purpose with no reader in the bundled
+# rules or dashboards: container_memory_max_usage_bytes and container_threads
+# (waste for tvt to find in Cloud).
+
+prometheus:
+  prometheusSpec:
+    remoteWrite:
+      - name: grafana-cloud
+        url: ""                   # set by make kps-cloud
+        basicAuth:
+          username:
+            name: grafana-cloud-metrics
+            key: username
+          password:
+            name: grafana-cloud-metrics
+            key: password
+        writeRelabelConfigs:
+          - sourceLabels: [job, metrics_path, __name__]
+            separator: ";"
+            action: keep
+            regex: >-
+              kube-state-metrics;[^;]*;kube_.+|node-exporter;[^;]*;node_(cpu_seconds_total|memory_(MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapTotal|SwapFree)_bytes|filesystem_(avail|size|free)_bytes|network_(receive|transmit)_bytes_total|disk_(read|written)_bytes_total|disk_io_time_seconds_total|load1|load5|load15|uname_info|boot_time_seconds|context_switches_total)|kubelet;/metrics/cadvisor;container_(cpu_usage_seconds_total|memory_(working_set_bytes|rss|cache|swap|usage_bytes|max_usage_bytes)|network_(receive|transmit)_bytes_total|threads)|kubelet;/metrics;kubelet_(running_pods|running_containers|volume_stats_.+|node_name)|apiserver;[^;]*;apiserver_request_total|[^;]*;[^;]*;up|[^;]*;[^;]*;[^;]+:[^;]+|[^;]*;[^;]*;ALERTS.*
+          - sourceLabels: [__name__]
+            action: drop
+            regex: kube_.+_(labels|annotations|created)
