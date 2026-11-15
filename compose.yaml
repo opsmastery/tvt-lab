@@ -22,6 +22,8 @@ services:
       # hit first wins. Kept well above the lab's ~2 GB so time still governs.
       - --storage.tsdb.retention.size=20GB
       - --web.enable-lifecycle
+      # The Loki ruler writes its recording rules here (tvt Sprint 2 item 12).
+      - --web.enable-remote-write-receiver
     ports: ["127.0.0.1:9090:9090"]
     volumes:
       - ./prometheus:/etc/prometheus:ro
