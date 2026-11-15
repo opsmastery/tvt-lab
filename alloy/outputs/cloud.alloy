@@ -1,0 +1,56 @@
+// ALLOY_OUTPUT=cloud: also forward to the Grafana Cloud test stack (tvt S6
+// item 6, Sprint 2 item 11). Credentials come only from the environment
+// (GCLOUD_HOSTED_METRICS_URL/_ID, GCLOUD_HOSTED_LOGS_URL/_ID,
+// GCLOUD_RW_API_KEY: a write-only token), never from this repo.
+//
+// The stack is on the free tier (10k active series, 50 GB of logs a month),
+// so only a subset goes (measured Nov 15, 2026):
+// - metrics: shop and node (~1.8k series) plus shop_cart_operations_total
+//   with user_id (~5k, the drop_label seed); every _created series and the
+//   feature-flag user_id series (~40k) stay local;
+// - logs: every shop stream but api debug (1.4 GB/day, the route_cold seed),
+//   ~570 MB/day. The reconciler pushes straight to Loki, so it never
+//   reaches Cloud.
+// ground-truth.yaml's cloud: section lists what Cloud doesn't see.
+
+prometheus.relabel "cloud" {
+  rule {
+    source_labels = ["__name__"]
+    regex         = ".+_created"
+    action        = "drop"
+  }
+  rule {
+    source_labels = ["__name__", "user_id"]
+    regex         = "shop_feature_flag_evaluations_total;.+"
+    action        = "drop"
+  }
+  forward_to = [prometheus.remote_write.cloud.receiver]
+}
+
+prometheus.remote_write "cloud" {
+  endpoint {
+    url = sys.env("GCLOUD_HOSTED_METRICS_URL")
+    basic_auth {
+      username = sys.env("GCLOUD_HOSTED_METRICS_ID")
+      password = sys.env("GCLOUD_RW_API_KEY")
+    }
+  }
+}
+
+loki.process "cloud" {
+  stage.match {
+    selector = "{app=\"shop\", component=\"api\", level=\"debug\"}"
+    action   = "drop"
+  }
+  forward_to = [loki.write.cloud.receiver]
+}
+
+loki.write "cloud" {
+  endpoint {
+    url = sys.env("GCLOUD_HOSTED_LOGS_URL")
+    basic_auth {
+      username = sys.env("GCLOUD_HOSTED_LOGS_ID")
+      password = sys.env("GCLOUD_RW_API_KEY")
+    }
+  }
+}

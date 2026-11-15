@@ -4,7 +4,7 @@ COMPOSE ?= podman compose
 # be absolute.
 export LAB_LOGS := $(CURDIR)/lab-logs
 
-.PHONY: up up-mimir down reset ps logs export-logs build lab-logs validate check-live urls autostart autostart-off
+.PHONY: up up-mimir cloud cloud-off down reset ps logs export-logs build lab-logs validate check-live urls autostart autostart-off
 
 up: build lab-logs
 	$(COMPOSE) up -d
@@ -22,6 +22,22 @@ build:
 lab-logs:
 	mkdir -p lab-logs/prometheus
 	chmod 777 lab-logs/prometheus
+
+# Forward a free-tier subset to the Grafana Cloud test stack
+# (alloy/outputs/cloud.alloy), or stop. Recreates only Alloy (--no-deps:
+# Prometheus keeps whichever config it runs). The GCLOUD_* variables come
+# from your shell; a missing one stops here instead of Alloy failing on
+# every send. The container keeps its mode across restarts and reboots;
+# put ALLOY_OUTPUT=cloud in .env so a later make up keeps it too.
+GCLOUD_VARS := GCLOUD_HOSTED_METRICS_URL GCLOUD_HOSTED_METRICS_ID GCLOUD_HOSTED_LOGS_URL GCLOUD_HOSTED_LOGS_ID GCLOUD_RW_API_KEY
+cloud: lab-logs
+	@for v in $(GCLOUD_VARS); do \
+		eval "x=\$${$$v}"; [ -n "$$x" ] || { echo "$$v is not set (export it in your shell)" >&2; exit 1; }; \
+	done
+	ALLOY_OUTPUT=cloud $(COMPOSE) up -d --no-deps alloy
+
+cloud-off: lab-logs
+	ALLOY_OUTPUT=local $(COMPOSE) up -d --no-deps alloy
 
 down:
 	$(COMPOSE) --profile mimir down
@@ -55,8 +71,11 @@ validate:
 		docker.io/grafana/loki:3.5.3 -config.file=/etc/loki/loki.yml -verify-config
 	podman run --rm -v ./alertmanager:/etc/alertmanager:ro --entrypoint amtool \
 		docker.io/prom/alertmanager:v0.28.1 check-config /etc/alertmanager/alertmanager.yml
-	podman run --rm -v ./alloy:/etc/alloy:ro \
-		docker.io/grafana/alloy:v1.10.0 fmt /etc/alloy/config.alloy >/dev/null
+	for o in local cloud; do \
+		podman run --rm -v ./alloy/config.alloy:/run/alloy/config.alloy:ro \
+			-v ./alloy/outputs/$$o.alloy:/run/alloy/output.alloy:ro \
+			docker.io/grafana/alloy:v1.10.0 validate /run/alloy || exit 1; \
+	done
 
 # Is the running lab what the repo describes? Every rule and Grafana alert
 # on disk must be loaded (Grafana reads alert provisioning only at start).

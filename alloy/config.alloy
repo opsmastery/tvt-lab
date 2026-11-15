@@ -7,6 +7,11 @@
 // Series keep the labels they had when Prometheus scraped them (job from
 // job_name, instance from the address), so history continues across the
 // switch (Nov 15, 2026).
+//
+// Everything also goes to prometheus.relabel "cloud" and loki.process
+// "cloud", defined by the output file compose mounts beside this one
+// (outputs/<ALLOY_OUTPUT>.alloy): local (the default) drops it all, cloud
+// forwards a free-tier subset to the Grafana Cloud test stack.
 
 prometheus.scrape "shop" {
   targets         = [{"__address__" = "shop:8080"}]
@@ -31,7 +36,7 @@ prometheus.relabel "apps" {
     regex         = "tvt_lab_no_such_metric"
     action        = "drop"
   }
-  forward_to = [prometheus.remote_write.prometheus.receiver]
+  forward_to = [prometheus.remote_write.prometheus.receiver, prometheus.relabel.cloud.receiver]
 }
 
 prometheus.remote_write "prometheus" {
@@ -55,7 +60,7 @@ loki.source.api "shop" {
 // Where tvt's proposals for Alloy-shipped streams land (ADR 0007:
 // loki.process blocks). Today it passes every line through.
 loki.process "apps" {
-  forward_to = [loki.write.loki.receiver]
+  forward_to = [loki.write.loki.receiver, loki.process.cloud.receiver]
 }
 
 loki.write "loki" {
