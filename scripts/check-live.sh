@@ -55,10 +55,29 @@ fi
 curl -fsS "$@" "$GRAFANA/api/ruler/grafana/api/v1/rules" | jq -r '.[][].rules[].grafana_alert.uid' | sort -u > "$tmp/grafana.got"
 compare "Grafana-managed alerts" "$tmp/grafana.want" "$tmp/grafana.got" "podman compose restart grafana (alert provisioning is read only at start)"
 
-# Alloy (the lab's pipeline): every component in alloy/config.alloy is
+# Alloy (the lab's pipeline): every component in alloy/config.alloy and the
+# mounted output (alloy/outputs/$ALLOY_OUTPUT.alloy, default local) is
 # running and healthy.
-grep -hE '^[a-z_.]+ "[a-z_]+" \{' alloy/config.alloy | sed -E 's/^([a-z_.]+) "([a-z_]+)".*/\1.\2/' | sort -u > "$tmp/alloy.want"
+grep -hE '^[a-z_.]+ "[a-z_]+" \{' alloy/config.alloy "alloy/outputs/${ALLOY_OUTPUT:-local}.alloy" | sed -E 's/^([a-z_.]+) "([a-z_]+)".*/\1.\2/' | sort -u > "$tmp/alloy.want"
 curl -fsS "$ALLOY/api/v0/web/components" | jq -r '.[] | select(.health.state == "healthy") | .localID' | sort -u > "$tmp/alloy.got"
 compare "Alloy components (healthy)" "$tmp/alloy.want" "$tmp/alloy.got" "make up (or podman compose restart alloy); see podman compose logs alloy"
+
+# In cloud mode, data must actually reach the Grafana Cloud stack: Alloy's
+# own /metrics (not PromQL) counts what each cloud writer sent and failed.
+if [ "${ALLOY_OUTPUT:-local}" = cloud ]; then
+  curl -fsS "$ALLOY/metrics" > "$tmp/alloy.metrics"
+  sum() { grep -E "^$1\{[^}]*component_id=\"$2\"" "$tmp/alloy.metrics" | awk '{s += $NF} END {print s + 0}'; }
+  sent=$(sum prometheus_remote_storage_samples_total prometheus.remote_write.cloud)
+  failed=$(sum prometheus_remote_storage_samples_failed_total prometheus.remote_write.cloud)
+  bytes=$(sum loki_write_sent_bytes_total loki.write.cloud)
+  dropped=$(sum loki_write_dropped_bytes_total loki.write.cloud)
+  if [ "$sent" = 0 ] || [ "$bytes" = 0 ] || [ "$failed" != 0 ] || [ "$dropped" != 0 ]; then
+    echo "FAIL Grafana Cloud: samples sent $sent (failed $failed), log bytes sent $bytes (dropped $dropped)" >&2
+    echo "     fix: check the GCLOUD_* variables, then make cloud; see podman compose logs alloy" >&2
+    fail=1
+  else
+    echo "  ok  Grafana Cloud ($sent samples, $bytes log bytes sent)"
+  fi
+fi
 
 exit $fail
