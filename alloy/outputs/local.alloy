@@ -1,0 +1,19 @@
+// ALLOY_OUTPUT=local (the default): nothing leaves the lab. The cloud
+// components exist so config.alloy's forward_to lists resolve; they drop
+// every series and line.
+
+prometheus.relabel "cloud" {
+  rule {
+    source_labels = ["__name__"]
+    regex         = ".*"
+    action        = "drop"
+  }
+  forward_to = []
+}
+
+loki.process "cloud" {
+  stage.drop {
+    expression = "(?s).*"
+  }
+  forward_to = []
+}
