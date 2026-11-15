@@ -14,12 +14,16 @@
 #   route_cold        log stream never queried: recommend cold storage over deletion
 #   line_handoff      a line pattern inside a kept stream that nothing reads: tvt reports it with its
 #                     cost and hands the line-level cut to zeroreads (tvt doesn't generate line filters)
+#   repeated_line     one identical line (no variable fields) repeated as a large share of a stream's
+#                     bytes: tvt reports the repeat rate and estimated saving (S5 item 3)
 #   lower_resolution  scrape interval is finer than any dashboard step uses
 
 metrics:
   shop_http_requests_total:
     class: hard_keep
-    why: ShopHighErrorRate alert; also Shop Overview panels 1-2 and the $route variable
+    why: >
+      ShopHighErrorRate alert; also Shop Overview panels 1-2, the $route variable, and
+      panel 9 through the $counter variable (its current value)
   shop_http_request_duration_seconds_bucket:
     class: hard_keep
     why: recording rule route:shop_http_request_duration_seconds:p99_5m feeds ShopHighLatency
@@ -59,7 +63,13 @@ metrics:
     why: recorded series used by ShopHighLatency and Shop Overview panel 3
   shop_cart_operations_total:
     class: keep_high
-    why: Shop Overview panel 4, sum by (op)
+    why: Shop Overview panel 4, sum by (op); also an option of panel 9's $counter variable
+  shop_cart_operation_total:
+    class: drop_metric
+    why: >
+      Distractor (S5): one letter off shop_cart_operations_total, a leftover duplicate
+      counter that nothing reads. Prefix or fuzzy matching would wrongly keep it.
+      Seeded Nov 14, 2026.
   node_cpu_seconds_total:
     class: keep_high
     why: Shop Overview panel 5
@@ -326,6 +336,13 @@ streams:
   '{app="shop", component="api", level="debug"}':
     class: route_cold
     why: about 88% of shop log bytes; excluded by the level matchers on panels 6 and 8 and the on-call query; never queried
+  '{app="reconciler", component="worker", level="error"}':
+    class: dormant_confirm
+    why: >
+      Distractor (S5): a background service logging one identical error line every 2s,
+      all day. Nothing reads it, but it's an error stream, so the owner is asked; never a
+      route_cold or a repeated-line saving. Panel 6 (app="shop") doesn't match it.
+      Seeded Nov 14, 2026.
 
 # Line-level findings: patterns inside a stream that is itself kept.
 line_patterns:
@@ -358,6 +375,22 @@ line_patterns:
     pattern: 'method=GET route=/healthz status=503 ... reason=db_ping_timeout'
     class: keep_medium
     why: read by the on-call ad hoc query; also rare and cheap
+  startup_burst:
+    stream: '{app="shop", component="api", level="warn"}'
+    pattern: 'msg="deprecated config key ignored, using the default" key=cache.ttl default=300s'
+    class: repeated_line
+    why: >
+      Identical text, logged STARTUP_BURST_LINES (5000) times in a burst on every shop
+      start: within Loki's pattern window (about 3 hours after a start) it is most of the
+      warn stream's lines. tvt reports it with its repeat rate and estimated saving and
+      never proposes dropping or rerouting the stream. Seeded Nov 14, 2026.
+  reconciler_errors:
+    stream: '{app="reconciler", component="worker", level="error"}'
+    pattern: 'reconcile failed: ledger upstream unavailable, will retry'
+    class: dormant_confirm
+    why: >
+      Distractor (S5): identical text repeated all day, but at error level in an error
+      stream. tvt must not report it as a repeated-line saving.
 
 scrape:
   global_scrape_interval:
@@ -417,3 +450,7 @@ storage:
 #   - /healthz: a droppable line pattern inside a kept stream (line-level: reported and handed to zeroreads)
 #   - a query that references /healthz lines but excludes the successful ones (!= "status=200")
 #   - a LogQL metric query over a whole stream whose values change, but don't break, when lines are dropped
+#   - S5 distractors, none of which may change a recommendation: a metric one letter off a read one
+#     (shop_cart_operation_total), a service logging one identical error line all day (reconciler), and
+#     a panel reading its metric through a custom variable (Shop Overview panel 9, ${counter})
+#   - an identical line logged in a burst at startup (repeated_line)
