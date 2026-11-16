@@ -107,6 +107,7 @@ services:
       # Logs go through Alloy (alloy/config.alloy); the reconciler's skip it.
       LOKI_URL: http://alloy:3500
       RECONCILER_LOKI_URL: http://loki:3100
+      OTLP_TRACES_URL: http://alloy:4318/v1/traces   # span metrics that overflow (alloy/config.alloy)
       REQUESTS_PER_SECOND: "20"
       HEALTHCHECKS_PER_SECOND: "30"   # /healthz scenario: probers x replicas
       INVENTORY_SYNC: ${INVENTORY_SYNC:-ok}   # ok | stale | missing: fires ShopInventorySyncMissing
