@@ -45,6 +45,44 @@ prometheus.remote_write "prometheus" {
   }
 }
 
+// The shop's traces (OTLP/HTTP on :4318) become span metrics (tvt S6 item 5).
+// customer.id is a dimension with a cardinality limit below the shop's 500
+// customers, so the metrics overflow: past the limit, new combinations go to
+// one series per metric with otel.metric.overflow="true" and no dimensions
+// (otel_metric_overflow in Prometheus). The span metrics join the apps path,
+// so tvt's proposals for them land in prometheus.relabel "apps" too.
+otelcol.receiver.otlp "shop" {
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+  output {
+    traces = [otelcol.connector.spanmetrics.shop.input]
+  }
+}
+
+otelcol.connector.spanmetrics "shop" {
+  dimension {
+    name = "http.route"
+  }
+  dimension {
+    name = "customer.id"
+  }
+  histogram {
+    unit = "s"
+    explicit {
+      buckets = ["0.05s", "0.1s", "0.25s", "0.5s", "1s", "2.5s"]
+    }
+  }
+  aggregation_cardinality_limit = 100
+  output {
+    metrics = [otelcol.exporter.prometheus.shop.input]
+  }
+}
+
+otelcol.exporter.prometheus "shop" {
+  forward_to = [prometheus.relabel.apps.receiver]
+}
+
 // The shop pushes its logs here (Loki push API on :3500) instead of to Loki.
 // The reconciler doesn't: it pushes straight to Loki, the lab's one signal
 // no pipeline claims.

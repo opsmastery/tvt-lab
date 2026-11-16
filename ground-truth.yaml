@@ -409,6 +409,7 @@ pipelines:
     files: [prometheus/scrape/lab.yml]
     handles: ['{job=~"prometheus|loki|grafana|alertmanager"}']
     jobs: [prometheus, loki, grafana, alertmanager]
+    overflow: [traces_span_metrics_*, target_info]   # the span metrics stay local
     examples: [prometheus_tsdb_head_series, loki_request_duration_seconds_bucket, grafana_http_request_duration_seconds_bucket, alertmanager_notifications_total]
   alloy-apps:
     kind: alloy
@@ -649,6 +650,26 @@ storage:
 
 # Lab states (tvt S5 benchmark; also S15's --as-of). The sections above are the
 # current state. Each earlier state lists only what differed, as it was then.
+# Overflow series (tvt S6 item 5). The shop's spans go through Alloy's
+# spanmetrics connector with customer.id as a dimension and
+# aggregation_cardinality_limit 100 (500 customers), so each span metric has
+# overflow series: otel_metric_overflow="true", only job (and le) kept. tvt
+# flags each metric, marks its cost a floor, and warns readers that filter on
+# a capped label. Since Nov 16, 2026 00:06 UTC. Not sent to Cloud.
+overflow:
+  capped: [customer_id, http_route, service_name, span_kind, span_name, status_code]
+  kept: [job]                   # plus le on the buckets
+  metrics:
+    traces_span_metrics_calls_total: {series: 1}
+    traces_span_metrics_duration_seconds_bucket: {series: 7}   # 6 bounds + +Inf
+    traces_span_metrics_duration_seconds_count: {series: 1}
+    traces_span_metrics_duration_seconds_sum: {series: 1}
+  # The viewer's ad hoc customer lookup, every third round (viewer/view.sh).
+  readers_filtering:
+    - query: 'sum(rate(traces_span_metrics_calls_total{customer_id="c-0042"}[5m]))'
+      metric: traces_span_metrics_calls_total
+      labels: [customer_id]
+
 # Grafana Cloud test stack (tvt S6 item 6, Sprint 2 item 11): with
 # ALLOY_OUTPUT=cloud (make cloud), Alloy also forwards a free-tier subset
 # (alloy/outputs/cloud.alloy). Only Alloy's signals go: Prometheus' own jobs
@@ -660,7 +681,7 @@ cloud:
   streams: ['{app="shop", component="api", level=~"info|warn|error"}', '{app="shop", component="audit"}']
   # Seeds that stay local, so a Cloud scan can't be scored on them.
   absent:
-    metrics: ["*_created", "shop_feature_flag_evaluations_total{user_id}"]
+    metrics: ["*_created", "shop_feature_flag_evaluations_total{user_id}", "traces_span_metrics_*", "target_info"]
     streams: ['{app="shop", component="api", level="debug"}', '{app="reconciler", component="worker", level="error"}']
     jobs: [prometheus, loki, grafana, alertmanager]
   series: ~7000                 # shop ~1.2k + node ~0.6k + shop_cart_operations_total{user_id} ~5k
