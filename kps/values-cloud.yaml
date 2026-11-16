@@ -30,6 +30,8 @@ prometheus:
           password:
             name: grafana-cloud-metrics
             key: password
+        queueConfig:
+          retryOnRateLimit: true  # retry 429s (the free tier allows 75 requests/s across tvt-lab and tvt-kps); a burst after a restart is otherwise dropped
         writeRelabelConfigs:
           - sourceLabels: [job, metrics_path, __name__]
             separator: ";"
