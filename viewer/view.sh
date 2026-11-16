@@ -65,6 +65,12 @@ while true; do
     curl -fsS -o /dev/null -G "$PROM_URL/api/v1/query" \
       --data-urlencode 'query=node_memory_MemAvailable_bytes' \
       || echo "viewer: ad hoc query failed"
+    # Support looking up one customer's traffic in the span metrics (tvt S6
+    # item 5): customer_id is capped by the cardinality limit, so most
+    # customers' points sit in the overflow series and this undercounts.
+    curl -fsS -o /dev/null -G "$PROM_URL/api/v1/query" \
+      --data-urlencode 'query=sum(rate(traces_span_metrics_calls_total{customer_id="c-0042"}[5m]))' \
+      || echo "viewer: customer query failed"
     # On-call digging into failed health checks only: references /healthz
     # lines, but never the successful ones. Failures are logged at warn; the
     # level matcher keeps the query off the debug stream (Loki reads every
