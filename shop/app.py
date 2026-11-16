@@ -34,6 +34,12 @@ Startup burst (tvt S5 item 3): on every start the shop logs one identical
 warn line STARTUP_BURST_LINES times, a repeated-line finding in the warn/api
 stream for as long as Loki's pattern ingester keeps it (about 3 hours).
 
+Overflow (tvt S6 item 5): every request is also a span (OTLP to Alloy) with
+a customer.id attribute over CUSTOMERS customers. Alloy's spanmetrics
+connector keeps customer.id as a dimension with a cardinality limit below
+that, so past the limit new combinations land in one overflow series per
+metric carrying otel.metric.overflow="true" and none of the dimensions.
+
 Logs are pushed to Loki as streams {app="shop", level, component}:
   info/warn/error api logs  -> on the Shop Overview logs panel
   debug api logs            -> high volume, never queried (cold-storage candidate)
@@ -70,6 +76,10 @@ STARTUP_BURST_LINES = int(os.environ.get("STARTUP_BURST_LINES", "5000"))
 STARTUP_BURST_LINE = 'msg="deprecated config key ignored, using the default" key=cache.ttl default=300s'
 RECONCILER_ERROR_SECONDS = float(os.environ.get("RECONCILER_ERROR_SECONDS", "2"))
 RECONCILER_ERROR_LINE = "reconcile failed: ledger upstream unavailable, will retry"
+
+# OTLP/HTTP traces endpoint (Alloy's otelcol.receiver.otlp); empty: no traces.
+OTLP_TRACES_URL = os.environ.get("OTLP_TRACES_URL", "")
+CUSTOMERS = [f"c-{n:04d}" for n in range(int(os.environ.get("CUSTOMERS", "500")))]
 
 ROUTES = ["/", "/products", "/product/:id", "/cart", "/checkout", "/search", "/account"]
 METHODS = {"/cart": ["GET", "POST", "DELETE"], "/checkout": ["POST"]}
@@ -184,6 +194,42 @@ class LokiShipper:
                 print(f"loki push failed: {exc}", flush=True)
 
 
+tracer = None
+
+
+def init_tracing():
+    """Spans over OTLP/HTTP to OTLP_TRACES_URL, batched; none when unset."""
+    global tracer
+    if not OTLP_TRACES_URL:
+        return
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    provider = TracerProvider(resource=Resource.create({"service.name": "shop"}))
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=OTLP_TRACES_URL)))
+    trace.set_tracer_provider(provider)
+    tracer = trace.get_tracer("tvt-lab-shop")
+
+
+def record_span(method, route, status, duration):
+    """One server span for a simulated request, timed to its duration."""
+    if tracer is None:
+        return
+    from opentelemetry.trace import SpanKind, Status, StatusCode
+
+    end = time.time_ns()
+    span = tracer.start_span(f"{method} {route}", kind=SpanKind.SERVER, start_time=end - int(duration * 1e9),
+                             attributes={"http.request.method": method, "http.route": route,
+                                         "http.response.status_code": int(status),
+                                         "customer.id": random.choice(CUSTOMERS)})
+    if status == "500":
+        span.set_status(Status(StatusCode.ERROR))
+    span.end(end_time=end)
+
+
 loki = LokiShipper(LOKI_URL)
 reconciler_loki = LokiShipper(RECONCILER_LOKI_URL)
 
@@ -200,6 +246,7 @@ def simulate_request():
 
     requests_total.labels(method, route, status).inc()
     request_duration.labels(route).observe(duration)
+    record_span(method, route, status, duration)
 
     if route == "/checkout":
         checkout_attempts.labels("failure" if status == "500" else "success").inc()
@@ -292,6 +339,7 @@ def background_gauges():
 
 def main():
     start_http_server(PORT)
+    init_tracing()
     startup_burst()
     threading.Thread(target=loki.run, daemon=True).start()
     threading.Thread(target=reconciler_loki.run, daemon=True).start()

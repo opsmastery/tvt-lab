@@ -19,6 +19,12 @@ prometheus.relabel "cloud" {
     regex         = ".+_created"
     action        = "drop"
   }
+  // Span metrics and their overflow (S6 item 5) stay local: ~800 series.
+  rule {
+    source_labels = ["__name__"]
+    regex         = "traces_span_metrics_.+|target_info"
+    action        = "drop"
+  }
   rule {
     source_labels = ["__name__", "user_id"]
     regex         = "shop_feature_flag_evaluations_total;.+"
