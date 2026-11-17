@@ -158,6 +158,31 @@ services:
     depends_on: [loki, shop]
     restart: unless-stopped
 
+  otelcol:
+    # The lab's OTel Collector pipeline (tvt S7): receives the synthetic coding
+    # agent's traces, logs and delta counters. Metrics are remote-written to
+    # Prometheus, logs go to Loki's OTLP endpoint, traces to the nop exporter.
+    # Its config directory stands in for a pipeline repo.
+    image: docker.io/otel/opentelemetry-collector-contrib:0.165.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otelcol/config.yaml:/etc/otelcol/config.yaml:ro
+    depends_on: [prometheus, loki]
+    restart: unless-stopped
+
+  genai-agent:
+    # Synthetic coding-agent telemetry on the GenAI conventions (tvt S7):
+    # made-up sessions, prompts and tool calls, every content flag on.
+    build:
+      context: ./genai-agent
+      dockerfile: Containerfile
+    image: localhost/tvt-lab-genai-agent:latest
+    environment:
+      OTLP_ENDPOINT: http://otelcol:4318
+      INTERACTION_SECONDS: "30"
+    depends_on: [otelcol]
+    restart: unless-stopped
+
   viewer:
     # Simulates people using the "Shop Overview" dashboard (queries sent
     # through Grafana with dashboard/panel attribution headers) plus occasional
