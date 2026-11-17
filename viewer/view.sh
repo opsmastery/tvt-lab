@@ -56,6 +56,9 @@ while true; do
   panel_query 9 prometheus prometheus '"sum(rate(shop_http_requests_total[1m]))"'
   # Panel 10 reads the name Alloy gives shop_search_queries_total (tvt S7 item 9).
   panel_query 10 prometheus prometheus '"sum by (outcome) (rate(shop_search_requests_total[1m]))"'
+  # Panel 11 reads the coding agent's token counter by model only, so
+  # session_id and user_email are unread labels on a read metric (tvt M7).
+  panel_query 11 prometheus prometheus '"sum by (model) (rate(coding_agent_token_usage_total[1m]))"'
 
   # Alertmanager Health: viewed every round, panels at a 1m step.
   curl -fsS -o /dev/null -u "$GRAFANA_AUTH" -H "Referer: $AM_REFERER" \

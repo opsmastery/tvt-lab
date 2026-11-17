@@ -480,12 +480,14 @@ records:
     api_request: model-call accounting events; unread, so a drop is expected (genai_agent.logs)
 
 # Synthetic coding-agent telemetry (tvt S7; genai-agent/agent.py, pipeline
-# otelcol-agent). Nothing reads any of it. What tvt should propose, in the
-# least-lossy order of ADR 0010, and what it must never do:
+# otelcol-agent). Only Shop Overview panel 11 reads any of it (the token counter,
+# by model; since Nov 17, 2026, for the test plan's M7). What tvt should propose,
+# in the least-lossy order of ADR 0010, and what it must never do:
 genai_agent:
   metrics:
     coding_agent_token_usage_total:
-      expect: candidate; nothing reads it
+      class: keep_high
+      expect: kept; Shop Overview panel 11 reads it sum by (model), so only its unread labels go (below)
     coding_agent_cost_usage_USD_total:
       expect: candidate; nothing reads it
   labels:
@@ -493,8 +495,12 @@ genai_agent:
     # would merge sessions into one series and break the counter, so the
     # proposal is the ordered pipeline: delete the labels, group, sum, then
     # delta_to_cumulative (S7 item 8).
-    session_id: {metrics: [coding_agent_token_usage_total, coding_agent_cost_usage_USD_total], expect: aggregate in the ordered pipeline, never a plain label drop}
-    user_email: {metrics: [coding_agent_token_usage_total, coding_agent_cost_usage_USD_total], expect: aggregate with session_id (identity, unread)}
+    # The cost counter is dropped whole, so the label proposal is on the token
+    # counter only. M7: after the collector applies it, the stored token series
+    # have no session_id or user_email, one cumulative series per remaining
+    # label set (model, type, ...), and only increase.
+    session_id: {metrics: [coding_agent_token_usage_total], expect: aggregate in the ordered pipeline, never a plain label drop}
+    user_email: {metrics: [coding_agent_token_usage_total], expect: aggregate with session_id (identity, unread)}
   logs:   # one Loki stream {service_name="coding-agent"}; event_name is structured metadata
     api_request: {expect: drop (a filter on event.name in the otelcol logs pipeline); unread}
     tool_decision: {expect: record; never dropped or sampled}
