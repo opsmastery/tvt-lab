@@ -12,6 +12,7 @@ A Podman-based Grafana stack seeded with **known telemetry waste** and **known d
 | Alertmanager | 9093 | Receives alerts, routes them nowhere |
 | node-exporter | 9100 | Hundreds of metrics, two of them used |
 | shop | 8080 | Seeded Python app: used, alert-only, stale and wasted metrics, plus info/debug/audit logs |
+| Fluent Bit 5.2 | | Tails the shop's debug log file and ships it to Loki: the lab's second log pipeline (tvt S7) |
 | viewer | | Replays Shop Overview panel queries through Grafana with dashboard/panel headers, plus occasional ad hoc queries |
 | Mimir 2.16 | 9009 | Optional (`make up-mimir`): remote-write target, cardinality API, query-frontend logging |
 

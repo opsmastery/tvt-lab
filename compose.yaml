@@ -111,6 +111,9 @@ services:
       REQUESTS_PER_SECOND: "20"
       HEALTHCHECKS_PER_SECOND: "30"   # /healthz scenario: probers x replicas
       INVENTORY_SYNC: ${INVENTORY_SYNC:-ok}   # ok | stale | missing: fires ShopInventorySyncMissing
+      DEBUG_LOG_FILE: /var/log/shop/debug.log   # debug api lines: tailed by fluent-bit (tvt S7)
+    volumes:
+      - shop-logs:/var/log/shop
     depends_on: [alloy]
     restart: unless-stopped
 
@@ -139,6 +142,19 @@ services:
       - ./alloy/outputs/${ALLOY_OUTPUT:-local}.alloy:/etc/alloy/run/output.alloy:ro
       - alloy-data:/var/lib/alloy/data
     depends_on: [prometheus, loki]
+    restart: unless-stopped
+
+  fluent-bit:
+    # The lab's second log pipeline (tvt S7, ADR 0009): tails the shop's debug
+    # api log and ships it to Loki as {app="shop", component="api",
+    # level="debug"}. Its config directory stands in for a pipeline repo.
+    image: docker.io/fluent/fluent-bit:5.2.0
+    command: ["/fluent-bit/bin/fluent-bit", "-c", "/fluent-bit/etc/fluent-bit.yaml"]
+    volumes:
+      - ./fluent-bit/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro
+      - shop-logs:/var/log/shop:ro
+      - fluent-bit-data:/var/lib/fluent-bit
+    depends_on: [loki, shop]
     restart: unless-stopped
 
   viewer:
@@ -207,3 +223,5 @@ volumes:
   grafana-data:
   mimir-data:
   alloy-data:
+  shop-logs:
+  fluent-bit-data:
