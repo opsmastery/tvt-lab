@@ -19,6 +19,12 @@
 #   lower_resolution  scrape interval is finer than any dashboard step uses
 
 metrics:
+  shop_search_requests_total:
+    class: keep_high
+    why: >
+      Shop Overview panel 10 (viewed). Stored under this name only because Alloy's
+      prometheus.relabel "apps" renames the shop's shop_search_queries_total (tvt S7
+      item 9). Seeded Nov 17, 2026.
   shop_http_requests_total:
     class: hard_keep
     why: >
@@ -435,6 +441,22 @@ pipelines:
   # pipeline: never "unmapped", and never a pipeline target even when a kept
   # label matches handles (job:shop_cache_hit_ratio:5m keeps job="shop").
   rule_outputs: ["route:shop_http_request_duration_seconds:p99_5m", "job:shop_cache_hit_ratio:5m", "shop:checkout_errors:count5m"]
+
+# Pipeline rewrites (tvt S7 item 9, ADR 0013). tvt reads Alloy's rules, maps
+# source names to stored names, and matches readers on the stored name.
+rewrites:
+  renamed:
+    - pipeline: alloy-apps
+      component: prometheus.relabel "apps"
+      from: shop_search_queries_total   # what the shop emits; never stored
+      to: shop_search_requests_total    # what Prometheus has; panel 10 reads it
+      expect: shop_search_requests_total is keep_high; a proposal for it targets the stored name, and nothing is reported for the source name
+  unfollowable:
+    - pipeline: alloy-apps
+      component: prometheus.relabel "spans"
+      why: regex = sys.env("TVT_LAB_SPANS_DROP_REGEX"), a value tvt can't see
+      signals: [traces_span_metrics_*, target_info]   # everything that passes the rule
+      expect: an evidence gap on those signals; never counted as a reader or a drop, and no proposal for them while the gap is open
 
 # SLO coverage (tvt S6 item 3). Report only. Services are the lab's owners, as
 # tvt.yaml ownership.owners names them: shop (shop_* metrics, {app="shop"}
