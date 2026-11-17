@@ -45,6 +45,12 @@ shop_search_requests_total before it's stored, and only Shop Overview panel 10
 reads the stored name. No reader uses the source name, which never reaches
 Prometheus.
 
+Writer seeds (tvt S7, test plan rows 3 and 4): shop_http_requests_total
+carries a handler label, one value per method and route, so removing it
+merges no series (a plain labeldrop, unread). A background worker logs
+debug lines through Alloy ({app="shop", component="worker", level="debug"}):
+unread, so its reroute to Alloy's cold component is expected.
+
 Logs are pushed to Loki as streams {app="shop", level, component}:
   info/warn/error api logs  -> on the Shop Overview logs panel
   debug api logs            -> high volume, never queried (cold-storage candidate)
@@ -89,6 +95,8 @@ STARTUP_BURST_LINES = int(os.environ.get("STARTUP_BURST_LINES", "5000"))
 # logfmt stream as logfmt and finds no pattern in a plain-text line.
 STARTUP_BURST_LINE = 'msg="deprecated config key ignored, using the default" key=cache.ttl default=300s'
 RECONCILER_ERROR_SECONDS = float(os.environ.get("RECONCILER_ERROR_SECONDS", "2"))
+# The worker's debug lines (through Alloy): one every WORKER_DEBUG_SECONDS.
+WORKER_DEBUG_SECONDS = float(os.environ.get("WORKER_DEBUG_SECONDS", "0.5"))
 RECONCILER_ERROR_LINE = "reconcile failed: ledger upstream unavailable, will retry"
 
 # OTLP/HTTP traces endpoint (Alloy's otelcol.receiver.otlp); empty: no traces.
@@ -102,7 +110,7 @@ FLAGS = ["new_checkout", "dark_mode", "reco_v2", "fast_search", "promo_banner"]
 
 # --- used -----------------------------------------------------------------
 requests_total = Counter(
-    "shop_http_requests", "HTTP requests.", ["method", "route", "status"])
+    "shop_http_requests", "HTTP requests.", ["method", "route", "status", "handler"])
 request_duration = Histogram(
     "shop_http_request_duration_seconds", "HTTP request latency.", ["route"])
 cart_ops = Counter(
@@ -277,7 +285,8 @@ def simulate_request():
     req_id = uuid.uuid4().hex[:16]
     user = random.choice(USERS)
 
-    requests_total.labels(method, route, status).inc()
+    handler = method.lower() + "_" + (route.strip("/").replace("/", "_") or "root")
+    requests_total.labels(method, route, status, handler).inc()
     request_duration.labels(route).observe(duration)
     record_span(method, route, status, duration)
 
@@ -348,6 +357,19 @@ def reconciler_loop():
         time.sleep(RECONCILER_ERROR_SECONDS)
 
 
+def worker_loop():
+    """A background index worker's debug lines, shipped through Alloy. Nothing
+    reads them: the Alloy reroute seed (tvt S7)."""
+    if WORKER_DEBUG_SECONDS <= 0:
+        return
+    step = 0
+    while True:
+        step += 1
+        loki.log("debug", "worker", f"job=index_rebuild step={step} shard={step % 16} "
+                 f"docs={random.randint(200, 900)} took_ms={random.randint(3, 80)}")
+        time.sleep(WORKER_DEBUG_SECONDS)
+
+
 def startup_burst():
     """One identical warn line, many times, at start (the repeated-line case)."""
     for _ in range(STARTUP_BURST_LINES):
@@ -381,6 +403,7 @@ def main():
     threading.Thread(target=reconciler_loop, daemon=True).start()
     threading.Thread(target=background_gauges, daemon=True).start()
     threading.Thread(target=healthcheck_loop, daemon=True).start()
+    threading.Thread(target=worker_loop, daemon=True).start()
     print(f"shop: metrics on :{PORT}, logs to {LOKI_URL} (reconciler: {RECONCILER_LOKI_URL}), {RPS} req/s, "
           f"{HEALTHCHECKS_PER_SECOND} health checks/s", flush=True)
     interval = 1.0 / RPS if RPS > 0 else 1.0
