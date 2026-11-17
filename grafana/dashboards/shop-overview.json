@@ -3,7 +3,7 @@
   "title": "Shop Overview",
   "description": "Viewed regularly (tvt-lab viewer simulates this). Everything referenced here should be kept.",
   "schemaVersion": 41,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "tags": [
     "tvt-lab"
@@ -350,6 +350,31 @@
             "uid": "prometheus"
           },
           "expr": "sum(rate(${counter}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Search requests",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (outcome) (rate(shop_search_requests_total[$__rate_interval]))"
         }
       ]
     }

@@ -40,6 +40,11 @@ connector keeps customer.id as a dimension with a cardinality limit below
 that, so past the limit new combinations land in one overflow series per
 metric carrying otel.metric.overflow="true" and none of the dimensions.
 
+Rename (tvt S7 item 9): shop_search_queries_total is renamed by Alloy to
+shop_search_requests_total before it's stored, and only Shop Overview panel 10
+reads the stored name. No reader uses the source name, which never reaches
+Prometheus.
+
 Logs are pushed to Loki as streams {app="shop", level, component}:
   info/warn/error api logs  -> on the Shop Overview logs panel
   debug api logs            -> high volume, never queried (cold-storage candidate)
@@ -142,6 +147,8 @@ inventory_sync.set(time.time())
 # metric is a read (keep_medium), and in tvt S8 that 90-day range blocks a
 # 30-day retention proposal on it.
 revenue = Counter("shop_revenue_dollars", "Revenue booked, by currency.", ["currency"])
+# Renamed by Alloy to shop_search_requests_total (tvt S7 item 9).
+search_queries = Counter("shop_search_queries", "Search queries, by whether they found anything.", ["outcome"])
 
 # --- stale dashboard ------------------------------------------------------
 legacy_queue = Gauge("shop_legacy_queue_depth", "Legacy batch queue depth.")
@@ -278,6 +285,8 @@ def simulate_request():
         checkout_attempts.labels("failure" if status == "500" else "success").inc()
         if random.random() < 0.1:
             gateway_retries.inc()
+    if route == "/search":
+        search_queries.labels("empty" if random.random() < 0.15 else "results").inc()
     if route == "/cart":
         op = {"GET": "view", "POST": "add", "DELETE": "remove"}[method]
         cart_ops.labels(op, user).inc()
