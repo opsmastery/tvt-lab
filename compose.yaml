@@ -137,6 +137,7 @@ services:
       GCLOUD_HOSTED_LOGS_URL: ${GCLOUD_HOSTED_LOGS_URL:-}
       GCLOUD_HOSTED_LOGS_ID: ${GCLOUD_HOSTED_LOGS_ID:-}
       GCLOUD_RW_API_KEY: ${GCLOUD_RW_API_KEY:-}
+      TVT_LAB_SPANS_DROP_REGEX: tvt_lab_env_no_such_metric   # alloy/config.alloy prometheus.relabel "spans": tvt can't see this value
     volumes:
       - ./alloy/config.alloy:/etc/alloy/run/config.alloy:ro
       - ./alloy/outputs/${ALLOY_OUTPUT:-local}.alloy:/etc/alloy/run/output.alloy:ro
