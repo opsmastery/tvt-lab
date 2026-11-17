@@ -114,8 +114,24 @@ services:
       DEBUG_LOG_FILE: /var/log/shop/debug.log   # debug api lines: tailed by fluent-bit (tvt S7)
     volumes:
       - shop-logs:/var/log/shop
-    depends_on: [alloy]
+    depends_on:
+      alloy:
+        condition: service_started
+      shop-logs-init:
+        condition: service_completed_successfully
     restart: unless-stopped
+
+  shop-logs-init:
+    # The shop runs as nobody and rotates its debug log by renaming it, so
+    # the shared volume's root must be nobody's. A volume created before
+    # the image's /var/log/shop (or by scripts/import-volumes.sh) is root's,
+    # and then rotation fails and the debug stream stops at 50 MB (seen on
+    # the Mac mini, Nov 17). This one-shot fixes the owner on every up.
+    image: docker.io/library/busybox:1.37.0
+    command: ["chown", "65534:65534", "/var/log/shop"]
+    volumes:
+      - shop-logs:/var/log/shop
+    restart: "no"
 
   alloy:
     # The lab's pipeline (tvt Sprint 2 item 14, ADR 0007): scrapes the shop and
