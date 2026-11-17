@@ -432,6 +432,17 @@ pipelines:
     files: [fluent-bit/fluent-bit.yaml]
     handles: ['{app="shop", component="api", level="debug"}']
     streams: ['{app="shop", component="api", level="debug"}']
+  # The synthetic coding agent's telemetry (tvt S7): OTLP into the lab's OTel
+  # Collector. A batch processor sits in every pipeline (S16 flags it; tvt
+  # never writes one). Spans go to the nop exporter: they exist only here.
+  otelcol-agent:
+    kind: otelcol
+    files: [otelcol/config.yaml]
+    handles: ['{job="coding-agent"}', '{service_name="coding-agent"}']
+    jobs: [coding-agent]
+    streams: ['{service_name="coding-agent"}']
+    traces: [coding-agent]
+    findings: [batch_processor]
   # No pipeline claims the reconciler's stream: the shop container pushes it
   # straight to Loki (RECONCILER_LOKI_URL), past Alloy. tvt must report it
   # "unmapped" with its savings, never proposable.
@@ -441,6 +452,36 @@ pipelines:
   # pipeline: never "unmapped", and never a pipeline target even when a kept
   # label matches handles (job:shop_cache_hit_ratio:5m keeps job="shop").
   rule_outputs: ["route:shop_http_request_duration_seconds:p99_5m", "job:shop_cache_hit_ratio:5m", "shop:checkout_errors:count5m"]
+
+# Synthetic coding-agent telemetry (tvt S7; genai-agent/agent.py, pipeline
+# otelcol-agent). Nothing reads any of it. What tvt should propose, in the
+# least-lossy order of ADR 0010, and what it must never do:
+genai_agent:
+  metrics:
+    coding_agent_token_usage_total:
+      expect: candidate; nothing reads it
+    coding_agent_cost_usage_USD_total:
+      expect: candidate; nothing reads it
+  labels:
+    # Delta counters at the source. Removing session_id after delta_to_cumulative
+    # would merge sessions into one series and break the counter, so the
+    # proposal is the ordered pipeline: delete the labels, group, sum, then
+    # delta_to_cumulative (S7 item 8).
+    session_id: {metrics: [coding_agent_token_usage_total, coding_agent_cost_usage_USD_total], expect: aggregate in the ordered pipeline, never a plain label drop}
+    user_email: {metrics: [coding_agent_token_usage_total, coding_agent_cost_usage_USD_total], expect: aggregate with session_id (identity, unread)}
+  logs:   # one Loki stream {service_name="coding-agent"}; event_name is structured metadata
+    api_request: {expect: drop (a filter on event.name in the otelcol logs pipeline); unread}
+    tool_decision: {expect: record; never dropped or sampled}
+    tool_result: {expect: record; never dropped or sampled}
+  content_attributes:
+    # Unread and large: cap with a truncation marker, never delete the record
+    # that carries them (ADR 0011). tool_parameters is carried twice (the
+    # execute_tool span and its tool_result log): keep one copy (S10 item 7).
+    spans: [user_prompt, gen_ai.input.messages, gen_ai.output.messages, tool_parameters]
+    logs: [tool_parameters]
+    expect: cap
+  spans:
+    execute_tool: {expect: record when success is true, including rollback_deploy (a consequential action); check fails any filter that drops them}
 
 # Pipeline rewrites (tvt S7 item 9, ADR 0013). tvt reads Alloy's rules, maps
 # source names to stored names, and matches readers on the stored name.
