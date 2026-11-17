@@ -453,6 +453,23 @@ pipelines:
   # label matches handles (job:shop_cache_hit_ratio:5m keeps job="shop").
   rule_outputs: ["route:shop_http_request_duration_seconds:p99_5m", "job:shop_cache_hit_ratio:5m", "shop:checkout_errors:count5m"]
 
+# Records (tvt S7 item 2, ADR 0011): never dropped, sampled or collapsed,
+# whatever their readers. Capping a content attribute is allowed when the
+# outcome fields stay (tool name, success, error, duration, call id). tvt
+# finds them by name patterns and OTel attributes, and tvt.yaml declares
+# them with records: selectors (streams: component="audit"; spans and logs:
+# gen_ai.operation.name=execute_tool, event_name tool_result|tool_decision).
+records:
+  streams:
+    '{app="shop", component="audit", level="info"}': audit log; also hard_keep through ShopAuditDenials, but a record even without the alert
+  log_events:   # in {service_name="coding-agent"}, told apart by event_name (structured metadata)
+    tool_result: the outcome of each agent tool call
+    tool_decision: why the agent ran it
+  spans:        # pipeline otelcol-agent only (nop exporter)
+    execute_tool: every span with success=true, including rollback_deploy, the simulated agent rollback that succeeds (about one interaction in 40)
+  not_records:
+    api_request: model-call accounting events; unread, so a drop is expected (genai_agent.logs)
+
 # Synthetic coding-agent telemetry (tvt S7; genai-agent/agent.py, pipeline
 # otelcol-agent). Nothing reads any of it. What tvt should propose, in the
 # least-lossy order of ADR 0010, and what it must never do:
