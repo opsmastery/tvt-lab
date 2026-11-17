@@ -217,13 +217,13 @@ labels:
     class: drop_label
     why: panel 4 groups by op only; 2000 possible users drive the cardinality
     check: dropping user_id must not create duplicate series (op stays unique per series after aggregation)
-  shop_http_requests_total/handler:
+  shop_cart_operations_total/op_kind:
     class: drop_label
     removal: labeldrop
     why: >
-      one value per method and route, so removing it merges no series; no panel, rule
-      or query uses it. The plain labeldrop goes into prometheus.relabel "apps" (tvt S7,
-      seeded Nov 17, 2026)
+      read or write, set by op, so removing it merges no series; panel 4 groups by op only
+      and nothing else uses it. One of the largest metrics, so a default scan reads its labels.
+      The plain labeldrop goes into prometheus.relabel "apps" (tvt S7, seeded Nov 17, 2026)
   shop_inventory_sync_last_success_timestamp_seconds/job:
     class: hard_keep
     why: matched by ShopInventorySyncMissing (job="shop"); dropping it would fire the alert
