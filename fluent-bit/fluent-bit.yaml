@@ -1,0 +1,25 @@
+# The lab's Fluent Bit pipeline (tvt S7, ADR 0009): the shop's debug api log.
+# tvt proposes changes here for {app="shop", component="api", level="debug"}:
+# a grep Exclude, or rewrite_tag with a second output for cold storage.
+service:
+  flush: 1
+  log_level: info
+
+pipeline:
+  inputs:
+    - name: tail
+      tag: shop.debug
+      path: /var/log/shop/debug.log
+      db: /var/lib/fluent-bit/tail.db
+      refresh_interval: 5
+      rotate_wait: 10
+      read_from_head: false
+      mem_buf_limit: 20MB
+
+  outputs:
+    - name: loki
+      match: shop.debug
+      host: loki
+      port: 3100
+      labels: app=shop, component=api, level=debug
+      drop_single_key: raw
