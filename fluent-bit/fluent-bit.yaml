@@ -31,3 +31,4 @@ pipeline:
       alias: cold
       match: tvt.cold.*
       path: /tmp/cold
+      mkdir: true   # the directory doesn't exist in the image; without this every write fails
