@@ -45,6 +45,14 @@ prometheus.relabel "apps" {
     replacement   = "shop_search_requests_total"
     action        = "replace"
   }
+  // Sets a label from another (tvt S7 item 9, label rules): tvt doesn't place
+  // a label removal around a rule that sets a label, so instance_pod is held
+  // on every metric that passes here, never proposed.
+  rule {
+    source_labels = ["instance"]
+    target_label  = "instance_pod"
+    action        = "replace"
+  }
   forward_to = [prometheus.remote_write.prometheus.receiver, prometheus.relabel.cloud.receiver]
 }
 
@@ -122,6 +130,10 @@ loki.source.api "shop" {
 loki.process "apps" {
   forward_to = [loki.write.loki.receiver, loki.process.cloud.receiver]
 }
+
+// The lab's cold tier for Alloy streams (tvt S7, pipelines[].cold): a stand-in
+// for an archive. Nothing forwards here until tvt's reroute block does.
+loki.echo "cold" { }
 
 loki.write "loki" {
   endpoint {
