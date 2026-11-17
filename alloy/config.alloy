@@ -28,13 +28,22 @@ prometheus.scrape "node" {
 }
 
 // Where tvt's proposals for Alloy-scraped metrics land (ADR 0007:
-// prometheus.relabel blocks). Today it keeps every series as scraped: this
-// rule matches no metric.
+// prometheus.relabel blocks). The first rule matches no metric. The second
+// renames the shop's search counter before it's stored (tvt S7 item 9): only
+// the new name, shop_search_requests_total, is in Prometheus, and only Shop
+// Overview panel 10 reads it, so tvt must match readers on the stored name.
 prometheus.relabel "apps" {
   rule {
     source_labels = ["__name__"]
     regex         = "tvt_lab_no_such_metric"
     action        = "drop"
+  }
+  rule {
+    source_labels = ["__name__"]
+    regex         = "shop_search_queries_total"
+    target_label  = "__name__"
+    replacement   = "shop_search_requests_total"
+    action        = "replace"
   }
   forward_to = [prometheus.remote_write.prometheus.receiver, prometheus.relabel.cloud.receiver]
 }
@@ -80,6 +89,19 @@ otelcol.connector.spanmetrics "shop" {
 }
 
 otelcol.exporter.prometheus "shop" {
+  forward_to = [prometheus.relabel.spans.receiver]
+}
+
+// A rule tvt can't follow (tvt S7 item 9, ADR 0013): its regex comes from the
+// environment (TVT_LAB_SPANS_DROP_REGEX in compose.yaml, set to a name no
+// metric has). tvt must treat every signal that passes it, the span metrics
+// and target_info, as an evidence gap: never a reader, never a safe drop.
+prometheus.relabel "spans" {
+  rule {
+    source_labels = ["__name__"]
+    regex         = sys.env("TVT_LAB_SPANS_DROP_REGEX")
+    action        = "drop"
+  }
   forward_to = [prometheus.relabel.apps.receiver]
 }
 
