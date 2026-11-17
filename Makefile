@@ -73,6 +73,8 @@ validate:
 		docker.io/prom/alertmanager:v0.28.1 check-config /etc/alertmanager/alertmanager.yml
 	podman run --rm -v ./fluent-bit/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro \
 		docker.io/fluent/fluent-bit:5.2.0 -c /fluent-bit/etc/fluent-bit.yaml --dry-run
+	podman run --rm -v ./otelcol/config.yaml:/etc/otelcol/config.yaml:ro \
+		docker.io/otel/opentelemetry-collector-contrib:0.165.0 validate --config=/etc/otelcol/config.yaml
 	for o in local cloud; do \
 		podman run --rm -e TVT_LAB_SPANS_DROP_REGEX=tvt_lab_env_no_such_metric \
 			-v ./alloy/config.alloy:/run/alloy/config.alloy:ro \
