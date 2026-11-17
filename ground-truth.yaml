@@ -217,6 +217,13 @@ labels:
     class: drop_label
     why: panel 4 groups by op only; 2000 possible users drive the cardinality
     check: dropping user_id must not create duplicate series (op stays unique per series after aggregation)
+  shop_http_requests_total/handler:
+    class: drop_label
+    removal: labeldrop
+    why: >
+      one value per method and route, so removing it merges no series; no panel, rule
+      or query uses it. The plain labeldrop goes into prometheus.relabel "apps" (tvt S7,
+      seeded Nov 17, 2026)
   shop_inventory_sync_last_success_timestamp_seconds/job:
     class: hard_keep
     why: matched by ShopInventorySyncMissing (job="shop"); dropping it would fire the alert
@@ -420,9 +427,10 @@ pipelines:
   alloy-apps:
     kind: alloy
     files: [alloy/config.alloy]
-    handles: ['{job=~"shop|node"}', '{app="shop", level=~"info|warn|error"}']
+    handles: ['{job=~"shop|node"}', '{app="shop", level=~"info|warn|error"}', '{app="shop", component="worker"}']
     jobs: [shop, node]
-    streams: ['{app="shop", level=~"info|warn|error"}']   # api info/warn/error and audit; debug is fluent-bit's since S7
+    streams: ['{app="shop", level=~"info|warn|error"}', '{app="shop", component="worker", level="debug"}']   # api info/warn/error and audit, and the worker's debug lines; api debug is fluent-bit's since S7
+    cold: loki.echo.cold   # tvt S7: where its stream reroutes go (a stand-in for an archive)
     examples: [shop_http_requests_total, shop_cart_operations_total, node_cpu_seconds_total, node_load15]
   # The shop's debug api lines go to a file that Fluent Bit tails (tvt S7,
   # ADR 0009). The stream's route_cold proposal belongs here (rewrite_tag to a
@@ -432,6 +440,7 @@ pipelines:
     files: [fluent-bit/fluent-bit.yaml]
     handles: ['{app="shop", component="api", level="debug"}']
     streams: ['{app="shop", component="api", level="debug"}']
+    cold: cold   # tvt S7: the file output aliased cold, match tvt.cold.*
   # The synthetic coding agent's telemetry (tvt S7): OTLP into the lab's OTel
   # Collector. A batch processor sits in every pipeline (S16 flags it; tvt
   # never writes one). Spans go to the nop exporter: they exist only here.
@@ -515,6 +524,18 @@ rewrites:
       why: regex = sys.env("TVT_LAB_SPANS_DROP_REGEX"), a value tvt can't see
       signals: [traces_span_metrics_*, target_info]   # everything that passes the rule
       expect: an evidence gap on those signals; never counted as a reader or a drop, and no proposal for them while the gap is open
+  # Rules that set a metric label (tvt S7 item 9, PR #120). tvt doesn't place a
+  # label removal around them yet: the label is held (unmapped with the
+  # unfollowable note) on every metric that passes, and the metrics stay mapped.
+  label_rules:
+    - pipeline: alloy-apps
+      component: prometheus.relabel "apps"
+      sets: instance_pod   # from instance, on every shop and node metric
+      expect: instance_pod held on those metrics; never a label removal
+    - pipeline: otelcol-agent
+      component: processor attributes/env
+      sets: deployment_environment   # deployment.environment, upserted on the agent's metrics
+      expect: deployment_environment held on the agent's metrics; session_id and user_email are still the aggregate proposal
 
 # SLO coverage (tvt S6 item 3). Report only. Services are the lab's owners, as
 # tvt.yaml ownership.owners names them: shop (shop_* metrics, {app="shop"}
@@ -613,6 +634,12 @@ streams:
   '{app="shop", component="api", level="debug"}':
     class: route_cold
     why: about 88% of shop log bytes; excluded by the level matchers on panels 6 and 8 and the on-call query; never queried. Shipped by Fluent Bit since S7 (pipeline fluentbit-shop-debug)
+  '{app="shop", component="worker", level="debug"}':
+    class: route_cold
+    why: >
+      the shop's index worker, one debug line every 0.5s through Alloy; excluded by the level
+      matchers on panels 6 and 8 and never queried. The reroute goes into Alloy (tvt_hot and
+      tvt_cold to loki.echo.cold), seeded Nov 17, 2026
   '{app="reconciler", component="worker", level="error"}':
     class: dormant_confirm
     why: >

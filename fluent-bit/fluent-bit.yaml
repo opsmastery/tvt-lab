@@ -23,3 +23,11 @@ pipeline:
       port: 3100
       labels: app=shop, component=api, level=debug
       drop_single_key: raw
+
+    # The cold tier (tvt S7, pipelines[].cold): a stand-in for an archive.
+    # tvt's rewrite_tag retags the debug stream to tvt.cold.shop.debug, which
+    # only this output takes.
+    - name: file
+      alias: cold
+      match: tvt.cold.*
+      path: /tmp/cold
