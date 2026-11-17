@@ -41,6 +41,21 @@ for tar in "$SRC"/*.tar; do
     --label "com.docker.compose.volume=$v" \
     "$name" >/dev/null
   podman volume import "$name" "$tar"
+  # The tar holds the files, not the volume's own root directory, which
+  # import creates as root. Prometheus (65534), Loki (10001) and Grafana (472)
+  # then can't write to it, so restore the owner the export recorded.
+  owner_file="$SRC/$v.owner"
+  if [ -f "$owner_file" ]; then
+    owner=$(cat "$owner_file")
+  else
+    case "$v" in
+      prometheus-data) owner=65534:65534 ;;
+      loki-data) owner=10001:10001 ;;
+      grafana-data) owner=472:0 ;;
+      *) owner=0:0 ;;
+    esac
+  fi
+  podman run --rm -v "$name:/v" docker.io/library/busybox:1.37 chown "$owner" /v
 done
 
 echo "import: done. Next: make up-mimir (and make cloud if you use the Grafana Cloud output)."
