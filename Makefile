@@ -71,6 +71,8 @@ validate:
 		docker.io/grafana/loki:3.5.3 -config.file=/etc/loki/loki.yml -verify-config
 	podman run --rm -v ./alertmanager:/etc/alertmanager:ro --entrypoint amtool \
 		docker.io/prom/alertmanager:v0.28.1 check-config /etc/alertmanager/alertmanager.yml
+	podman run --rm -v ./fluent-bit/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro \
+		docker.io/fluent/fluent-bit:5.2.0 -c /fluent-bit/etc/fluent-bit.yaml --dry-run
 	for o in local cloud; do \
 		podman run --rm -v ./alloy/config.alloy:/run/alloy/config.alloy:ro \
 			-v ./alloy/outputs/$$o.alloy:/run/alloy/output.alloy:ro \
