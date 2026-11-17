@@ -3,7 +3,7 @@
   "title": "Shop Overview",
   "description": "Viewed regularly (tvt-lab viewer simulates this). Everything referenced here should be kept.",
   "schemaVersion": 41,
-  "version": 3,
+  "version": 4,
   "editable": true,
   "tags": [
     "tvt-lab"
@@ -375,6 +375,32 @@
             "uid": "prometheus"
           },
           "expr": "sum by (outcome) (rate(shop_search_requests_total[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Coding agent tokens by model",
+      "description": "Reads the agent's token counter by model only (tvt test plan M7): session_id and user_email are never grouped on.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 58,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (model) (rate(coding_agent_token_usage_total[$__rate_interval]))"
         }
       ]
     }
