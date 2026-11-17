@@ -27,6 +27,21 @@ processors:
         value: lab
   batch: {}
   delta_to_cumulative: {}
+  # tvt:begin otelcol-agent scan=1 evidence=2f40fe19548a
+  # 2 unread metrics, see tvt why; saves 0.62 USD/month
+  filter/tvt:
+    error_mode: ignore
+    metrics:
+      metric:
+        - 'metric.name == "coding_agent_cost_usage_USD_total"'
+        - 'metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+cost[^A-Za-z0-9:]+usage[^A-Za-z0-9:]+USD(?:[^A-Za-z0-9:]+total)?$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$") or metric.unit == "1")'
+        - 'metric.is_monotonic == false and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+cost[^A-Za-z0-9:]+usage[^A-Za-z0-9:]+USD[^A-Za-z0-9:]+total$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$"))'
+        - 'metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+cost[^A-Za-z0-9:]+usage(?:[^A-Za-z0-9:]+total)?$") and metric.unit == "USD"'
+        - 'metric.name == "coding_agent_token_usage_total"'
+        - 'metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token[^A-Za-z0-9:]+usage(?:[^A-Za-z0-9:]+total)?$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$") or metric.unit == "1")'
+        - 'metric.is_monotonic == false and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token[^A-Za-z0-9:]+usage[^A-Za-z0-9:]+total$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$"))'
+        - 'metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token(?:[^A-Za-z0-9:]+total)?$") and metric.unit == "usage"'
+  # tvt:end
 
 exporters:
   prometheus_remote_write:
@@ -43,7 +58,7 @@ service:
       exporters: [nop]
     metrics:
       receivers: [otlp]
-      processors: [attributes/env, delta_to_cumulative, batch]
+      processors: [filter/tvt, attributes/env, delta_to_cumulative, batch]
       exporters: [prometheus_remote_write]
     logs:
       receivers: [otlp]
