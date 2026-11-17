@@ -48,7 +48,9 @@ for v in "${VOLUMES[@]}"; do
   podman volume export "${PROJECT}_$v" --output "$out.partial"
   mv "$out.partial" "$out"
   bytes=$(stat -f %z "$out" 2>/dev/null || stat -c %s "$out")
-  echo "  - {name: $v, bytes: $bytes, seconds: $(( $(date +%s) - start ))}" >> "$DEST/MANIFEST"
+  owner=$(podman run --rm -v "${PROJECT}_$v:/v:ro" docker.io/library/busybox:1.37 stat -c %u:%g /v)
+  echo "$owner" > "$DEST/$v.owner"
+  echo "  - {name: $v, bytes: $bytes, root_owner: \"$owner\", seconds: $(( $(date +%s) - start ))}" >> "$DEST/MANIFEST"
 done
 
 echo "export: checksums"
