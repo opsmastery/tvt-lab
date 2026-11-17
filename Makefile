@@ -74,7 +74,8 @@ validate:
 	podman run --rm -v ./fluent-bit/fluent-bit.yaml:/fluent-bit/etc/fluent-bit.yaml:ro \
 		docker.io/fluent/fluent-bit:5.2.0 -c /fluent-bit/etc/fluent-bit.yaml --dry-run
 	for o in local cloud; do \
-		podman run --rm -v ./alloy/config.alloy:/run/alloy/config.alloy:ro \
+		podman run --rm -e TVT_LAB_SPANS_DROP_REGEX=tvt_lab_env_no_such_metric \
+			-v ./alloy/config.alloy:/run/alloy/config.alloy:ro \
 			-v ./alloy/outputs/$$o.alloy:/run/alloy/output.alloy:ro \
 			docker.io/grafana/alloy:v1.10.0 validate /run/alloy || exit 1; \
 	done
