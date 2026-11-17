@@ -414,10 +414,18 @@ pipelines:
   alloy-apps:
     kind: alloy
     files: [alloy/config.alloy]
-    handles: ['{job=~"shop|node"}', '{app="shop"}']
+    handles: ['{job=~"shop|node"}', '{app="shop", level=~"info|warn|error"}']
     jobs: [shop, node]
-    streams: ['{app="shop"}']   # every shop stream: api info/warn/error/debug, audit
+    streams: ['{app="shop", level=~"info|warn|error"}']   # api info/warn/error and audit; debug is fluent-bit's since S7
     examples: [shop_http_requests_total, shop_cart_operations_total, node_cpu_seconds_total, node_load15]
+  # The shop's debug api lines go to a file that Fluent Bit tails (tvt S7,
+  # ADR 0009). The stream's route_cold proposal belongs here (rewrite_tag to a
+  # second output), not in Alloy.
+  fluentbit-shop-debug:
+    kind: fluentbit
+    files: [fluent-bit/fluent-bit.yaml]
+    handles: ['{app="shop", component="api", level="debug"}']
+    streams: ['{app="shop", component="api", level="debug"}']
   # No pipeline claims the reconciler's stream: the shop container pushes it
   # straight to Loki (RECONCILER_LOKI_URL), past Alloy. tvt must report it
   # "unmapped" with its savings, never proposable.
@@ -524,7 +532,7 @@ streams:
     why: Loki alert ShopAuditDenials; also matched by the logs panel
   '{app="shop", component="api", level="debug"}':
     class: route_cold
-    why: about 88% of shop log bytes; excluded by the level matchers on panels 6 and 8 and the on-call query; never queried
+    why: about 88% of shop log bytes; excluded by the level matchers on panels 6 and 8 and the on-call query; never queried. Shipped by Fluent Bit since S7 (pipeline fluentbit-shop-debug)
   '{app="reconciler", component="worker", level="error"}':
     class: dormant_confirm
     why: >
