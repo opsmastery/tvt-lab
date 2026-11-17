@@ -1,0 +1,44 @@
+# The lab's OpenTelemetry Collector pipeline (tvt S7, ADR 0007). This
+# directory stands in for a pipeline repo (ground truth pipelines:
+# otelcol-agent). It receives the synthetic coding agent's telemetry
+# (genai-agent/) and is where tvt's otelcol filter/transform proposals land.
+#
+# Seeds:
+# - a batch processor in every pipeline: tvt never writes one (ADR 0013, S7
+#   item 6), and S16's config check flags it (removed in v0.177.0);
+# - delta counters with session.id and user.email: delta_to_cumulative turns
+#   them into the cumulative series Prometheus needs, one per session;
+# - traces go to the nop exporter: the lab has no trace backend, so tool
+#   spans exist only in this pipeline (records: tvt must never filter them).
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+  delta_to_cumulative: {}
+
+exporters:
+  prometheus_remote_write:
+    endpoint: http://prometheus:9090/api/v1/write
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+  nop: {}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [nop]
+    metrics:
+      receivers: [otlp]
+      processors: [delta_to_cumulative, batch]
+      exporters: [prometheus_remote_write]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_http/loki]
