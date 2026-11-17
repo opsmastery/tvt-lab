@@ -3,6 +3,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
+# The debug log Fluent Bit tails (tvt S7); an empty named volume mounted here
+# takes this directory's owner.
+RUN mkdir -p /var/log/shop && chown nobody /var/log/shop
 USER nobody
 EXPOSE 8080
 CMD ["python", "-u", "app.py"]

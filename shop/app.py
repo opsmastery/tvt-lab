@@ -44,9 +44,16 @@ Logs are pushed to Loki as streams {app="shop", level, component}:
   info/warn/error api logs  -> on the Shop Overview logs panel
   debug api logs            -> high volume, never queried (cold-storage candidate)
   audit logs                -> referenced by a Loki alert rule (hard keep)
+
+Fluent Bit pipeline (tvt S7): with DEBUG_LOG_FILE set, the debug api lines go
+to that file (rotating) instead of through Alloy, and the fluent-bit service
+tails it and ships it to Loki with the same labels. So the lab has a log
+pipeline of each kind: Alloy for the other shop streams, Fluent Bit for debug.
 """
 
 import json
+import logging
+import logging.handlers
 import os
 import random
 import threading
@@ -60,6 +67,8 @@ LOKI_URL = os.environ.get("LOKI_URL", "http://loki:3100").rstrip("/")
 # The reconciler pushes past the pipeline, straight to Loki: the lab's one
 # signal no pipeline claims (tvt Sprint 2 item 14). Defaults to LOKI_URL.
 RECONCILER_LOKI_URL = os.environ.get("RECONCILER_LOKI_URL", LOKI_URL).rstrip("/")
+# Debug api lines go to this file for Fluent Bit to tail (tvt S7); unset: to Loki.
+DEBUG_LOG_FILE = os.environ.get("DEBUG_LOG_FILE", "")
 RPS = float(os.environ.get("REQUESTS_PER_SECOND", "20"))
 PORT = int(os.environ.get("PORT", "8080"))
 # Health checks per second across the simulated fleet (probers x replicas).
@@ -234,6 +243,23 @@ loki = LokiShipper(LOKI_URL)
 reconciler_loki = LokiShipper(RECONCILER_LOKI_URL)
 
 
+def debug_sink():
+    """Where debug api lines go: a rotating file for Fluent Bit, or Loki."""
+    if not DEBUG_LOG_FILE:
+        return lambda line: loki.log("debug", "api", line)
+    os.makedirs(os.path.dirname(DEBUG_LOG_FILE), exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(DEBUG_LOG_FILE, maxBytes=50 * 1024 * 1024, backupCount=2)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    log = logging.getLogger("shop.debug")
+    log.propagate = False
+    log.setLevel(logging.DEBUG)
+    log.addHandler(handler)
+    return log.debug
+
+
+log_debug = debug_sink()
+
+
 def simulate_request():
     route = random.choice(ROUTES)
     method = random.choice(METHODS.get(route, ["GET"]))
@@ -272,7 +298,7 @@ def simulate_request():
         payload = json.dumps({"step": step, "request_id": req_id, "headers": {
             "user-agent": "Mozilla/5.0 (lab)", "accept": "*/*",
             "x-trace": uuid.uuid4().hex}, "cache": {"hit": random.random() < 0.8}})
-        loki.log("debug", "api", f"debug {payload}")
+        log_debug(f"debug {payload}")
 
     if route in ("/checkout", "/account") or random.random() < 0.05:
         result = "denied" if random.random() < 0.03 else "allowed"
