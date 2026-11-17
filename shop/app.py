@@ -45,9 +45,10 @@ shop_search_requests_total before it's stored, and only Shop Overview panel 10
 reads the stored name. No reader uses the source name, which never reaches
 Prometheus.
 
-Writer seeds (tvt S7, test plan rows 3 and 4): shop_http_requests_total
-carries a handler label, one value per method and route, so removing it
-merges no series (a plain labeldrop, unread). A background worker logs
+Writer seeds (tvt S7, test plan rows 3 and 4): shop_cart_operations_total
+carries an op_kind label (read or write), set by op, so removing it merges no
+series (a plain labeldrop, unread). It's on one of the largest metrics, so a
+default scan (--label-top 50) reads its labels. A background worker logs
 debug lines through Alloy ({app="shop", component="worker", level="debug"}):
 unread, so its reroute to Alloy's cold component is expected.
 
@@ -110,11 +111,11 @@ FLAGS = ["new_checkout", "dark_mode", "reco_v2", "fast_search", "promo_banner"]
 
 # --- used -----------------------------------------------------------------
 requests_total = Counter(
-    "shop_http_requests", "HTTP requests.", ["method", "route", "status", "handler"])
+    "shop_http_requests", "HTTP requests.", ["method", "route", "status"])
 request_duration = Histogram(
     "shop_http_request_duration_seconds", "HTTP request latency.", ["route"])
 cart_ops = Counter(
-    "shop_cart_operations", "Cart operations.", ["op", "user_id"])  # user_id: droppable label
+    "shop_cart_operations", "Cart operations.", ["op", "user_id", "op_kind"])  # user_id: droppable label; op_kind: a clean labeldrop
 # Distractor: one letter off the read shop_cart_operations_total, never read.
 cart_op_legacy = Counter(
     "shop_cart_operation", "Cart operations (legacy duplicate counter).", ["op"])
@@ -285,8 +286,7 @@ def simulate_request():
     req_id = uuid.uuid4().hex[:16]
     user = random.choice(USERS)
 
-    handler = method.lower() + "_" + (route.strip("/").replace("/", "_") or "root")
-    requests_total.labels(method, route, status, handler).inc()
+    requests_total.labels(method, route, status).inc()
     request_duration.labels(route).observe(duration)
     record_span(method, route, status, duration)
 
@@ -298,7 +298,7 @@ def simulate_request():
         search_queries.labels("empty" if random.random() < 0.15 else "results").inc()
     if route == "/cart":
         op = {"GET": "view", "POST": "add", "DELETE": "remove"}[method]
-        cart_ops.labels(op, user).inc()
+        cart_ops.labels(op, user, "read" if op == "view" else "write").inc()
         cart_op_legacy.labels(op).inc()
     for flag in random.sample(FLAGS, 2):
         flag_evals.labels(flag, random.choice(["on", "off"]), user).inc()
