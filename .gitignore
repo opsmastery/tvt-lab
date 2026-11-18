@@ -2,3 +2,4 @@
 .env
 __pycache__/
 lab-logs/
+grafana/dashboards/s9-reader.json
