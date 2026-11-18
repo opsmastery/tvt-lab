@@ -1,0 +1,25 @@
+diff --git a/otelcol/config.yaml b/otelcol/config.yaml
+index 9d2dc46..eb5f6c5 100644
+--- a/otelcol/config.yaml
++++ b/otelcol/config.yaml
+@@ -44,6 +44,12 @@ processors:
+         value: lab
+   batch: {}
+   delta_to_cumulative: {}
++  # The api component's errors are mostly noise.
++  filter/shop_errors:
++    error_mode: ignore
++    logs:
++      log_record:
++        - 'log.attributes["component"] == "api"'
+   transform/lint:
+     error_mode: ignore
+     trace_statements:
+@@ -101,6 +107,7 @@ service:
+       exporters: [otlp_http/loki]
+     logs/shop-errors:
+       receivers: [otlp/shop]
++      processors: [filter/shop_errors]
+       exporters: [count/shop_errors]
+     metrics/shop-errors:
+       receivers: [count/shop_errors]

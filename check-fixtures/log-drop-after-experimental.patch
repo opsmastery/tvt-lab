@@ -1,0 +1,26 @@
+diff --git a/otelcol/config.yaml b/otelcol/config.yaml
+index 9d2dc46..2bb4efd 100644
+--- a/otelcol/config.yaml
++++ b/otelcol/config.yaml
+@@ -44,6 +44,12 @@ processors:
+         value: lab
+   batch: {}
+   delta_to_cumulative: {}
++  # api_request events are unread (ground truth genai_agent.logs).
++  filter/api_request:
++    error_mode: ignore
++    logs:
++      log_record:
++        - 'log.attributes["event.name"] == "api_request"'
+   transform/lint:
+     error_mode: ignore
+     trace_statements:
+@@ -97,7 +103,7 @@ service:
+       exporters: [prometheus_remote_write]
+     logs:
+       receivers: [otlp]
+-      processors: [transform/lint, batch]
++      processors: [transform/lint, filter/api_request, batch]
+       exporters: [otlp_http/loki]
+     logs/shop-errors:
+       receivers: [otlp/shop]

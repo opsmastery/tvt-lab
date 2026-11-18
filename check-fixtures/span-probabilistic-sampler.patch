@@ -1,0 +1,23 @@
+diff --git a/otelcol/config.yaml b/otelcol/config.yaml
+index 9d2dc46..51e90ba 100644
+--- a/otelcol/config.yaml
++++ b/otelcol/config.yaml
+@@ -44,6 +44,9 @@ processors:
+         value: lab
+   batch: {}
+   delta_to_cumulative: {}
++  # Keep one trace in ten.
++  probabilistic_sampler:
++    sampling_percentage: 10
+   transform/lint:
+     error_mode: ignore
+     trace_statements:
+@@ -83,7 +86,7 @@ service:
+   pipelines:
+     traces:
+       receivers: [otlp]
+-      processors: [transform/lint, batch]
++      processors: [transform/lint, probabilistic_sampler, batch]
+       exporters: [routing/tools]
+     traces/tools:
+       receivers: [routing/tools]

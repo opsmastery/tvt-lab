@@ -128,7 +128,35 @@ loki.source.api "shop" {
 // Where tvt's proposals for Alloy-shipped streams land (ADR 0007:
 // loki.process blocks). Today it passes every line through.
 loki.process "apps" {
-  forward_to = [loki.write.loki.receiver, loki.process.cloud.receiver]
+  forward_to = [loki.write.loki.receiver, loki.process.cloud.receiver, loki.process.shop_errors.receiver]
+}
+
+// The shop's error lines also go to the Collector (tvt S8), whose count
+// connector turns them into shop_error_log_lines_total for the
+// ShopErrorLogBurst alert: a log drop that empties the stream would silence
+// it. Only error lines leave this block.
+loki.process "shop_errors" {
+  stage.match {
+    selector = "{app=\"shop\", level!=\"error\"}"
+    action   = "drop"
+  }
+  forward_to = [otelcol.receiver.loki.shop_errors.receiver]
+}
+
+// Loki labels become log attributes (level, component, app).
+otelcol.receiver.loki "shop_errors" {
+  output {
+    logs = [otelcol.exporter.otlphttp.collector.input]
+  }
+}
+
+otelcol.exporter.otlphttp "collector" {
+  client {
+    endpoint = "http://otelcol:4319"
+    tls {
+      insecure = true
+    }
+  }
 }
 
 // The lab's cold tier for Alloy streams (tvt S7, pipelines[].cold): a stand-in

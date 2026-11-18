@@ -1,0 +1,26 @@
+diff --git a/otelcol/config.yaml b/otelcol/config.yaml
+index 9d2dc46..e2f4e9f 100644
+--- a/otelcol/config.yaml
++++ b/otelcol/config.yaml
+@@ -44,6 +44,12 @@ processors:
+         value: lab
+   batch: {}
+   delta_to_cumulative: {}
++  # Drop successful spans to save space.
++  filter/spans:
++    error_mode: ignore
++    traces:
++      span:
++        - 'span.attributes["success"] == true'
+   transform/lint:
+     error_mode: ignore
+     trace_statements:
+@@ -83,7 +89,7 @@ service:
+   pipelines:
+     traces:
+       receivers: [otlp]
+-      processors: [transform/lint, batch]
++      processors: [transform/lint, filter/spans, batch]
+       exporters: [routing/tools]
+     traces/tools:
+       receivers: [routing/tools]

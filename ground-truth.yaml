@@ -25,6 +25,13 @@ metrics:
       Shop Overview panel 10 (viewed). Stored under this name only because Alloy's
       prometheus.relabel "apps" renames the shop's shop_search_queries_total (tvt S7
       item 9). Seeded Nov 17, 2026.
+  shop_error_log_lines_total:
+    class: hard_keep
+    why: >
+      ShopErrorLogBurst alert. Made by the Collector's count connector
+      (otelcol/config.yaml count/shop_errors) from the shop's error lines that
+      Alloy forwards (loki.process "shop_errors"), not scraped. Seeded Nov 18,
+      2026 (tvt S8 item 10).
   shop_http_requests_total:
     class: hard_keep
     why: >
@@ -232,6 +239,12 @@ labels:
 # prometheus (prometheus/rules/shop.yml), loki (loki/rules) or grafana
 # (grafana/provisioning/alerting). Mimir's rules are under mimir: below.
 rules:
+  ShopErrorLogBurst:
+    source: prometheus
+    group: shop-alerts
+    kind: alert
+    class: hard_keep
+    why: alert on shop_error_log_lines_total, which a count connector makes from log lines (tvt S8 item 10)
   ShopHighLatency:
     source: prometheus
     group: shop-alerts
@@ -447,11 +460,14 @@ pipelines:
   otelcol-agent:
     kind: otelcol
     files: [otelcol/config.yaml]
-    handles: ['{job="coding-agent"}', '{service_name="coding-agent"}']
+    handles: ['{job="coding-agent"}', '{service_name="coding-agent"}', '{__name__="shop_error_log_lines_total"}']
     jobs: [coding-agent]
     streams: ['{service_name="coding-agent"}']
     traces: [coding-agent]
-    findings: [batch_processor]
+    findings: [batch_processor, uncast_status_code, regex_without_where, experimental_ottl]   # S16; the last three are transform/lint (tvt S8 seeds)
+    # It also receives a copy of the shop's error lines from Alloy (otlp/shop);
+    # Loki still gets them from alloy-apps, so the stream stays alloy-apps'.
+    # The copy only feeds count/shop_errors.
   # No pipeline claims the reconciler's stream: the shop container pushes it
   # straight to Loki (RECONCILER_LOKI_URL), past Alloy. tvt must report it
   # "unmapped" with its savings, never proposable.
@@ -712,6 +728,133 @@ scrape:
       the alertmanager job is scraped every 15s, but its metrics' only reader, the
       Alertmanager Health dashboard, uses a 1m minimum interval on every panel
 
+
+# Readers inside the pipelines (tvt S8 items 9 and 10). A routing condition,
+# a sampling policy, a filter condition or a lookup key reads what it names;
+# a connector that turns logs or spans into a metric passes its readers back
+# to its inputs. Each is a declared pipeline_rule consumer: removing,
+# renaming or emptying what it reads is refused like any hard-keep change.
+pipeline_readers:
+  - pipeline: otelcol-agent
+    component: connector routing/tools
+    reads:
+      span_attributes: [gen_ai.operation.name]
+    why: routes execute_tool spans to traces/tools; deleting the attribute sends every span to traces/other
+  - pipeline: otelcol-agent
+    component: connector count/shop_errors
+    makes: shop_error_log_lines_total   # read by ShopErrorLogBurst
+    reads:
+      streams: ['{app="shop", level="error"}']   # through Alloy's loki.process "shop_errors"
+      log_attributes: [level, component]          # its condition and its dimension
+    why: a drop or filter that empties the counted lines silences ShopErrorLogBurst
+
+# Worst-case detection delay per alert (tvt S8 item 5), as
+#   scrape interval + longest range window + rule-group interval + for + group_wait
+# with a recording rule's own range and group interval added when an alert
+# reads one. The lab: Alloy scrapes shop and node every 10s, Prometheus
+# evaluates every 30s unless a group sets interval, Loki's ruler every 1m,
+# Grafana's groups as provisioned, and group_wait is Alertmanager's default
+# 30s (alertmanager.yml sets none). Pushed data (Loki lines, the count
+# connector) has no scrape interval. Objectives for the lab (tvt.yaml
+# detection.objectives in tvt's lab config): critical 15m, warning 1h, info
+# none.
+detection:
+  objectives: {critical: 15m, warning: 1h}
+  alerts:
+    ShopPaymentQueueSpike:      {severity: critical, delay: 45s,      terms: "10s + 0 + 5s (shop-fast) + 0 + 30s"}
+    ShopPaymentQueueBacklog:    {severity: critical, delay: 6m10s,    terms: "10s + 0 + 30s + 5m + 30s"}
+    ShopHighErrorRate:          {severity: critical, delay: 11m10s,   terms: "10s + 5m + 30s + 5m + 30s"}
+    ShopErrorRateHigh:          {severity: critical, delay: 11m10s,   terms: "10s + 5m + 30s + 5m + 30s"}
+    ShopAvailabilityBurn:
+      severity: critical
+      delay: 1h3m10s
+      terms: "10s + 1h + 30s + 2m + 30s"
+      expect: >
+        past the critical objective under the plain formula, which takes the longest window.
+        A multiwindow burn alert trips on its short window once the long one is over its
+        threshold (a full outage crosses 14.4x of a 0.1% budget on the 1h window in under a
+        minute), which gives 8m10s. S8 decides which tvt reports; either way it's a report
+        finding, not a check refusal, since no change caused it.
+    ShopHealthcheckSlow:        {severity: warning, delay: 16m10s,    terms: "10s + 5m + 30s + 10m + 30s"}
+    ShopHighLatency:            {severity: warning, delay: 16m40s,    terms: "10s + 5m + 30s (recording rule) + 30s + 10m + 30s"}
+    ShopInventorySyncMissing:   {severity: warning, delay: 21m10s,    terms: "10s + 10m (the 600s staleness threshold) + 30s + 10m + 30s"}
+    ShopLegacyExportStalled:    {severity: warning, delay: 46m10s,    terms: "10s + 15m + 30s + 30m + 30s"}
+    ShopErrorLogBurst:          {severity: warning, delay: 11m,       terms: "0 (pushed) + 5m + 30s + 5m + 30s"}
+    ShopCheckoutErrorsFromLogs: {severity: warning, delay: 12m,       terms: "0 + 5m + 1m (Loki recording rule) + 30s + 5m + 30s"}
+    ShopAuditDenials:           {severity: warning, delay: 11m30s,    terms: "0 + 5m + 1m (Loki ruler) + 5m + 30s"}
+    "Shop order export lag":    {severity: warning, delay: 16m40s,    terms: "10s + 10m (relative range 600s) + 1m + 5m + 30s"}
+    "Shop checkout errors (logs)": {severity: warning, delay: 11m,    terms: "0 + 5m (relative range 300s) + 30s + 5m + 30s"}
+    ShopDailyCheckoutsLow:      {severity: info, delay: 24h1m40s,     terms: "10s + 24h + 1m (shop-daily) + 0 + 30s"}
+
+# Proposed changes check must judge (tvt S8, test-first). Each fixture is a
+# patch against this repo as merged with it (git apply --check passes),
+# shaped like the PR a person or tvt would open. expect: refuse needs every
+# listed reason in check's output; accept needs none. Records and outcome
+# fields as in records: and genai_agent: above; detection as in detection:.
+check:
+  span-filter-success:
+    file: check-fixtures/span-filter-success.patch
+    item: 13
+    expect: refuse
+    reasons: [a filter span condition can be true for record spans (execute_tool with success=true)]
+  span-probabilistic-sampler:
+    file: check-fixtures/span-probabilistic-sampler.patch
+    item: 13
+    expect: refuse
+    reasons: [probabilistic_sampler on a traces pipeline with record spans]
+  span-tail-sampling-no-records:
+    file: check-fixtures/span-tail-sampling-no-records.patch
+    item: 13
+    expect: refuse
+    reasons: [tail_sampling has no policy that always keeps execute_tool spans]
+  span-delete-tool-call-id:
+    file: check-fixtures/span-delete-tool-call-id.patch
+    item: 13
+    expect: refuse
+    reasons: [deletes the outcome field gen_ai.tool.call.id from record spans]
+  span-cap-tool-parameters:
+    file: check-fixtures/span-cap-tool-parameters.patch
+    item: 13
+    expect: accept
+    why: caps a content attribute (Substring) and marks the cut; outcome fields stay
+  routing-attribute-delete:
+    file: check-fixtures/routing-attribute-delete.patch
+    item: 9
+    expect: refuse
+    reasons:
+      - deletes gen_ai.operation.name, which routing/tools reads
+      - deletes the attribute that identifies record spans (records.spans)
+  filter-reads-later-attribute:
+    file: check-fixtures/filter-reads-later-attribute.patch
+    item: 7
+    expect: refuse
+    reasons: [filter/env reads deployment.environment before attributes/env sets it, so the condition drops every agent metric]
+  log-filter-counted-stream:
+    file: check-fixtures/log-filter-counted-stream.patch
+    item: 10
+    expect: refuse
+    reasons: [empties the lines count/shop_errors counts, and ShopErrorLogBurst reads its metric]
+  log-drop-after-experimental:
+    file: check-fixtures/log-drop-after-experimental.patch
+    item: 8
+    expect: refuse
+    reasons: [the logs pipeline runs transform/lint's experimental ToValidUTF8, which tvt doesn't model, before the drop (fail closed)]
+    why: the drop itself is one ground truth expects (genai_agent.logs api_request); only the experimental statement blocks it
+  scrape-interval-5m:
+    file: check-fixtures/scrape-interval-5m.patch
+    item: 5
+    expect: refuse
+    reasons:
+      - rate windows hold fewer than four samples (5m windows hold 1, 15m windows 3) for ShopHealthcheckSlow, ShopErrorRateHigh, ShopHighErrorRate, ShopAvailabilityBurn, ShopLegacyExportStalled and the p99_5m recording rule behind ShopHighLatency
+      - for is shorter than the new interval (ShopAvailabilityBurn, 2m)
+      - ShopHighErrorRate and ShopErrorRateHigh pass the critical objective (16m > 15m)
+    note: for 0 alerts (ShopPaymentQueueSpike, ShopDailyCheckoutsLow) fire on one sample by design; the for rule is for a nonzero for
+  scrape-interval-15s:
+    file: check-fixtures/scrape-interval-15s.patch
+    item: 5
+    expect: accept
+    why: 5m windows still hold 20 samples, every nonzero for is longer, and the worst critical delay is 11m15s
+
 # Simulated agent clients (agent/agent.sh, tvt S3 items 5-6). Both query Prometheus
 # directly (the query log shows only their container IP) and Mimir when it runs (its
 # query-frontend log carries user_agent).
@@ -842,3 +985,10 @@ states:
       Before the SLO coverage seeds (tvt S6 item 3): no availability SLO and no burn-rate alert.
     rules_absent: [ShopAvailabilityBurn]
     slos_absent: [shop/availability]
+  before-s8-seeds:
+    until: 2026-11-18T00:31:00Z
+    about: >
+      Before the S8 seeds (tvt S8, lab-backlog.md): no routing or count connector in the
+      Collector, no transform/lint, and the shop's error lines went only to Loki.
+    rules_absent: [ShopErrorLogBurst]
+    metrics_absent: [shop_error_log_lines_total]

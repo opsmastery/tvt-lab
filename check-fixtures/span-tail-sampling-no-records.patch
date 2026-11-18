@@ -1,0 +1,32 @@
+diff --git a/otelcol/config.yaml b/otelcol/config.yaml
+index 9d2dc46..20194e1 100644
+--- a/otelcol/config.yaml
++++ b/otelcol/config.yaml
+@@ -44,6 +44,18 @@ processors:
+         value: lab
+   batch: {}
+   delta_to_cumulative: {}
++  # Keep slow and failed traces only.
++  tail_sampling:
++    decision_wait: 10s
++    policies:
++      - name: errors
++        type: status_code
++        status_code:
++          status_codes: [ERROR]
++      - name: slow
++        type: latency
++        latency:
++          threshold_ms: 5000
+   transform/lint:
+     error_mode: ignore
+     trace_statements:
+@@ -83,7 +95,7 @@ service:
+   pipelines:
+     traces:
+       receivers: [otlp]
+-      processors: [transform/lint, batch]
++      processors: [transform/lint, tail_sampling, batch]
+       exporters: [routing/tools]
+     traces/tools:
+       receivers: [routing/tools]
