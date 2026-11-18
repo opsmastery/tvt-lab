@@ -1,0 +1,4 @@
+# Code owners (tvt S9 item 1). tvt reads a path whose first segment names a
+# scrape job, an app label or a Backstage component as an owner of that
+# component's signals: /alertmanager/ owns job="alertmanager".
+/alertmanager/ @jasonvance

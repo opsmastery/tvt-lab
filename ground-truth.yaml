@@ -786,6 +786,51 @@ detection:
     "Shop checkout errors (logs)": {severity: warning, delay: 11m,    terms: "0 + 5m (relative range 300s) + 30s + 5m + 30s"}
     ShopDailyCheckoutsLow:      {severity: info, delay: 24h1m40s,     terms: "10s + 24h + 1m (shop-daily) + 0 + 30s"}
 
+# Owners (tvt S9 item 1). Who each signal's recommendation names, and from
+# which source, when tvt.yaml's ownership map says nothing about it (tvt's S9
+# config maps only the reconciler, so the other sources get a turn). Sources in
+# tvt's order: tvt.yaml, CODEOWNERS, team/service labels, Backstage; then the
+# inferred fallbacks (service.name mapped through tvt.yaml, Kubernetes
+# metadata). Seeded Nov 18, 2026.
+owners:
+  signals:
+    shop_search_requests_total:
+      owner: "group:default/shop-team"
+      source: backstage
+      why: shop/catalog-info.yaml spec.owner, through the component name shop
+    '{app="shop", component="worker", level="debug"}':
+      owner: "group:default/shop-team"
+      source: backstage
+      why: the stream's app label names the component
+    '{app="reconciler", component="worker", level="error"}':
+      owner: reconciler
+      source: tvt.yaml
+    alertmanager_build_info:
+      owner: "@jasonvance"
+      source: codeowners
+      why: /alertmanager/ in .github/CODEOWNERS names job alertmanager
+    coding_agent_token_usage_total:
+      owner: ai-platform
+      source: service_name
+      inferred: true
+      why: job coding-agent is the agent's service.name, mapped through tvt.yaml ownership.services
+  # Dormant signals no source names an owner for: report only, listed as an
+  # evidence gap (missing ownership), never routed to a guess.
+  missing:
+    - node_vmstat_oom_kill
+    - node_filesystem_device_error
+    - node_network_receive_errs_total
+  # The owner workflow (S9 items 2 to 4), driven by scripts/s9-reader.sh.
+  workflow:
+    - step: propose
+      expect: the coding agent's label removal opens as a draft PR assigned to ai-platform's reviewers, owner marked inferred
+    - step: confirm
+      expect: a .tvt/decisions.yaml commit on the PR with the evidence hash the owner saw; tvt check passes and the PR may leave draft
+    - step: scripts/s9-reader.sh add coding_agent_token_usage_total, then scan
+      expect: the evidence hash changes (a new reader); tvt check refuses the merge (stale confirmation) and the recommendation is open again
+    - step: scripts/s9-reader.sh remove, then scan
+      expect: the confirmation is still stale (decisions don't come back on their own); the owner re-confirms
+
 # Proposed changes check must judge (tvt S8, test-first). Each fixture is a
 # patch against this repo as merged with it (git apply --check passes),
 # shaped like the PR a person or tvt would open. expect: refuse needs every
