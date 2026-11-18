@@ -1,0 +1,15 @@
+# Backstage catalog entry for the shop (tvt S9 item 1). tvt reads spec.owner
+# through the component's name: the shop's metrics (shop_*), its streams
+# ({app="shop"}) and its scrape job carry the name "shop".
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: shop
+  description: The lab's demo web shop (Flask), with its worker and cache.
+  annotations:
+    backstage.io/kubernetes-label-selector: app=shop
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/shop-team
+  system: tvt-lab
