@@ -1,0 +1,25 @@
+diff --git a/otelcol/config.yaml b/otelcol/config.yaml
+index 9d2dc46..46fc1bf 100644
+--- a/otelcol/config.yaml
++++ b/otelcol/config.yaml
+@@ -44,6 +44,11 @@ processors:
+         value: lab
+   batch: {}
+   delta_to_cumulative: {}
++  # gen_ai.operation.name is noisy; drop it.
++  transform/spans:
++    error_mode: ignore
++    trace_statements:
++      - 'delete_key(span.attributes, "gen_ai.operation.name")'
+   transform/lint:
+     error_mode: ignore
+     trace_statements:
+@@ -83,7 +88,7 @@ service:
+   pipelines:
+     traces:
+       receivers: [otlp]
+-      processors: [transform/lint, batch]
++      processors: [transform/lint, transform/spans, batch]
+       exporters: [routing/tools]
+     traces/tools:
+       receivers: [routing/tools]
