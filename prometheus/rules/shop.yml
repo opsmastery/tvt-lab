@@ -55,3 +55,14 @@ groups:
           # Its query step is the only reader of shop_payment_gateway_retries_total
           # (Sprint 2 item 7). tvt reads it through a tvt.yaml runbooks mirror.
           runbook_url: https://github.com/Opsmastery-Summit/tvt-lab/blob/main/runbooks/payment-queue-backlog.md
+
+      # Reads a metric the Collector's count connector makes from the shop's
+      # error log lines (otelcol/config.yaml count/shop_errors, tvt S8 item
+      # 10): dropping or emptying {app="shop", level="error"} silences it.
+      - alert: ShopErrorLogBurst
+        expr: sum(rate(shop_error_log_lines_total[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The shop is logging more than 2 error lines a second"

@@ -1,7 +1,8 @@
 # The lab's OpenTelemetry Collector pipeline (tvt S7, ADR 0007). This
 # directory stands in for a pipeline repo (ground truth pipelines:
 # otelcol-agent). It receives the synthetic coding agent's telemetry
-# (genai-agent/) and is where tvt's otelcol filter/transform proposals land.
+# (genai-agent/) and the shop's error log lines (from Alloy), and is where
+# tvt's otelcol filter/transform proposals land.
 #
 # Seeds:
 # - a batch processor in every pipeline: tvt never writes one (ADR 0013, S7
@@ -10,12 +11,28 @@
 #   them into the cumulative series Prometheus needs, one per session;
 # - traces go to the nop exporter: the lab has no trace backend, so tool
 #   spans exist only in this pipeline (records: tvt must never filter them).
+#
+# S8 seeds (lab-backlog.md; ground truth check: and pipeline_readers:):
+# - routing/tools routes the agent's spans on gen_ai.operation.name, so that
+#   attribute is read by the pipeline itself (S8 item 9);
+# - count/shop_errors turns the shop's error lines into
+#   shop_error_log_lines_total, which the ShopErrorLogBurst alert reads: the
+#   counted stream is protected through the connector (S8 item 10);
+# - transform/lint holds two statements S16 flags (an uncast status-code
+#   comparison, a regex replace with no where) and one experimental OTTL
+#   function (ToValidUTF8, behind --feature-gates): S16 reports the upgrade
+#   risk, and check fails closed on the experimental one (ADR 0012).
 
 receivers:
   otlp:
     protocols:
       http:
         endpoint: 0.0.0.0:4318
+  # The shop's error lines, from Alloy's otelcol.exporter.otlphttp (tvt S8).
+  otlp/shop:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4319
 
 processors:
   # Sets a metric label (tvt S7 item 9, label rules): deployment_environment
@@ -27,6 +44,33 @@ processors:
         value: lab
   batch: {}
   delta_to_cumulative: {}
+  transform/lint:
+    error_mode: ignore
+    trace_statements:
+      # Uncast: http.response.status_code is an int, so this never matches
+      # (S16 flags it). The agent's spans don't carry it either.
+      - 'set(span.attributes["error.class"], "server") where span.attributes["http.response.status_code"] == "500"'
+    log_statements:
+      # A regex replace with no where runs on every record (S16 flags it).
+      - 'replace_pattern(log.body, "token=[A-Za-z0-9]+", "token=***")'
+      # Experimental (pkg/ottl/xottl): outside OTTL v1's guarantee.
+      - 'set(log.body, ToValidUTF8(log.body)) where IsString(log.body)'
+
+connectors:
+  routing/tools:
+    default_pipelines: [traces/other]
+    table:
+      - condition: 'span.attributes["gen_ai.operation.name"] == "execute_tool"'
+        pipelines: [traces/tools]
+  count/shop_errors:
+    logs:
+      shop.error.log.lines:
+        description: The shop's error log lines, by component (alerted by ShopErrorLogBurst).
+        conditions:
+          - 'log.attributes["level"] == "error"'
+        attributes:
+          - key: component
+            default_value: unknown
 
 exporters:
   prometheus_remote_write:
@@ -39,7 +83,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [transform/lint, batch]
+      exporters: [routing/tools]
+    traces/tools:
+      receivers: [routing/tools]
+      exporters: [nop]
+    traces/other:
+      receivers: [routing/tools]
       exporters: [nop]
     metrics:
       receivers: [otlp]
@@ -47,5 +97,12 @@ service:
       exporters: [prometheus_remote_write]
     logs:
       receivers: [otlp]
-      processors: [batch]
+      processors: [transform/lint, batch]
       exporters: [otlp_http/loki]
+    logs/shop-errors:
+      receivers: [otlp/shop]
+      exporters: [count/shop_errors]
+    metrics/shop-errors:
+      receivers: [count/shop_errors]
+      processors: [delta_to_cumulative, batch]
+      exporters: [prometheus_remote_write]

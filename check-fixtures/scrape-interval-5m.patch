@@ -1,0 +1,13 @@
+diff --git a/alloy/config.alloy b/alloy/config.alloy
+index a98ee47..a2bdad1 100644
+--- a/alloy/config.alloy
++++ b/alloy/config.alloy
+@@ -16,7 +16,7 @@
+ prometheus.scrape "shop" {
+   targets         = [{"__address__" = "shop:8080"}]
+   job_name        = "shop"
+-  scrape_interval = "10s"
++  scrape_interval = "5m"
+   forward_to      = [prometheus.relabel.apps.receiver]
+ }
+ 
