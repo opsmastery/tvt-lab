@@ -1,0 +1,26 @@
+diff --git a/otelcol/config.yaml b/otelcol/config.yaml
+index 9d2dc46..279005f 100644
+--- a/otelcol/config.yaml
++++ b/otelcol/config.yaml
+@@ -44,6 +44,12 @@ processors:
+         value: lab
+   batch: {}
+   delta_to_cumulative: {}
++  # Drop the agent's metrics outside production.
++  filter/env:
++    error_mode: ignore
++    metrics:
++      datapoint:
++        - 'datapoint.attributes["deployment.environment"] != "lab"'
+   transform/lint:
+     error_mode: ignore
+     trace_statements:
+@@ -93,7 +99,7 @@ service:
+       exporters: [nop]
+     metrics:
+       receivers: [otlp]
+-      processors: [attributes/env, delta_to_cumulative, batch]
++      processors: [filter/env, attributes/env, delta_to_cumulative, batch]
+       exporters: [prometheus_remote_write]
+     logs:
+       receivers: [otlp]
