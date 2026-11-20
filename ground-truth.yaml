@@ -506,6 +506,9 @@ genai_agent:
       expect: kept; Shop Overview panel 11 reads it sum by (model), so only its unread labels go (below)
     coding_agent_cost_usage_USD_total:
       expect: candidate; nothing reads it
+    coding_agent_api_requests_total:
+      class: hard_keep
+      expect: kept; the CodingAgentAPIErrors alert (prometheus/rules/coding-agent.yml) reads it (S10 item 1 seed)
   labels:
     # Delta counters at the source. Removing session_id after delta_to_cumulative
     # would merge sessions into one series and break the counter, so the
@@ -517,6 +520,13 @@ genai_agent:
     # label set (model, type, ...), and only increase.
     session_id: {metrics: [coding_agent_token_usage_total], expect: aggregate in the ordered pipeline, never a plain label drop}
     user_email: {metrics: [coding_agent_token_usage_total], expect: aggregate with session_id (identity, unread)}
+    # S10 item 1: read only by class (=~"5.."), eight values. Expect a bucket
+    # recommendation (500, 400, 200), written in the collector's ordered
+    # pipeline: cast the int to a string, replace_pattern for each attribute
+    # spelling, then interval/tvt sums the merged series. Never a label
+    # removal (it's read) and never a drop. After it applies, the stored
+    # series carry only 200, 400 and 500, and the alert's ratio is unchanged.
+    http_response_status_code: {metrics: [coding_agent_api_requests_total], expect: bucket (S10 item 1), values 200/400/500 after}
   logs:   # one Loki stream {service_name="coding-agent"}; event_name is structured metadata
     api_request: {expect: drop (a filter on event.name in the otelcol logs pipeline); unread}
     tool_decision: {expect: record; never dropped or sampled}
