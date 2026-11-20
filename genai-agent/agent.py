@@ -70,6 +70,11 @@ metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[read
 meter = metrics.get_meter("tvt-lab-genai-agent")
 tokens = meter.create_counter("coding_agent.token.usage", unit="{token}", description="Tokens used, by type and model.")
 cost = meter.create_counter("coding_agent.cost.usage", unit="USD", description="Estimated cost of model calls.")
+# S10 item 1 seed: model API calls by status code (an int, as semantic
+# conventions have it). The CodingAgentAPIErrors alert reads the code only
+# by class (=~"5.."), so tvt should bucket it in the collector.
+api_requests = meter.create_counter("coding_agent.api.requests", unit="{request}", description="Model API calls, by HTTP status code.")
+STATUS_CODES = [200] * 90 + [400, 401, 429, 429, 500, 502, 503, 503, 529, 529]
 
 
 def filler(min_kb, max_kb):
@@ -98,6 +103,7 @@ def interaction(session_id, user, seq):
                     "gen_ai.usage.input_tokens": tin, "gen_ai.usage.output_tokens": tout,
                     "gen_ai.input.messages": filler(2, 6), "gen_ai.output.messages": filler(1, 2)}):
                 time.sleep(random.uniform(0.05, 0.3))
+            api_requests.add(1, {"http.response.status_code": random.choice(STATUS_CODES)})
             tokens.add(tin, {**common, "type": "input", "model": model})
             tokens.add(tout, {**common, "type": "output", "model": model})
             cost.add(dollars, {**common, "model": model})
