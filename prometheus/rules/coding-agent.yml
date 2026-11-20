@@ -1,0 +1,17 @@
+groups:
+  # S10 item 1 seed: the only reader of coding_agent_api_requests_total, which
+  # uses http_response_status_code only by class. The label has eight values
+  # (200, 400, 401, 429, 500, 502, 503, 529); bucketing it to 200/400/500 in the
+  # collector keeps this alert's result, so tvt proposes a bucket, not a drop
+  # or a label removal.
+  - name: coding-agent
+    rules:
+      - alert: CodingAgentAPIErrors
+        expr: |
+          sum(rate(coding_agent_api_requests_total{http_response_status_code=~"5.."}[10m]))
+            / sum(rate(coding_agent_api_requests_total[10m])) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than a quarter of the coding agent's model API calls fail with 5xx.

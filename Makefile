@@ -66,7 +66,7 @@ validate:
 	podman run --rm -v ./prometheus:/etc/prometheus:ro --entrypoint promtool \
 		docker.io/prom/prometheus:v3.5.0 check config /etc/prometheus/prometheus.yml
 	podman run --rm -v ./prometheus/rules:/rules:ro --entrypoint promtool \
-		docker.io/prom/prometheus:v3.5.0 check rules /rules/shop.yml /rules/healthcheck.yml
+		docker.io/prom/prometheus:v3.5.0 check rules /rules/shop.yml /rules/healthcheck.yml /rules/coding-agent.yml
 	podman run --rm -v ./loki/loki.yml:/etc/loki/loki.yml:ro \
 		docker.io/grafana/loki:3.5.3 -config.file=/etc/loki/loki.yml -verify-config
 	podman run --rm -v ./alertmanager:/etc/alertmanager:ro --entrypoint amtool \
