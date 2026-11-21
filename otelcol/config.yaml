@@ -88,6 +88,16 @@ exporters:
     path: /tmp/cold.json
 
 service:
+  # The Collector's own metrics on :8888 for tvt's savings ledger (tvt S11
+  # item 4): each exporter's otelcol_exporter_sent_* counters.
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
   pipelines:
     traces:
       receivers: [otlp]
