@@ -185,6 +185,9 @@ services:
     command: ["--config=/etc/otelcol/config.yaml", "--feature-gates=pkg.ottl.functions.enableExperimental"]
     # Its own metrics, for tvt's savings ledger (tvt S11 item 4).
     ports: ["127.0.0.1:8888:8888"]
+    # The image has no /tmp; the file/cold exporter writes /tmp/cold.json
+    # (tvt-lab #46), so a level tier that routes to it needs one.
+    tmpfs: [/tmp]
     volumes:
       - ./otelcol/config.yaml:/etc/otelcol/config.yaml:ro
     depends_on: [prometheus, loki]
