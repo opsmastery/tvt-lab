@@ -531,6 +531,15 @@ genai_agent:
     api_request: {expect: drop (a filter on event.name in the otelcol logs pipeline); unread}
     tool_decision: {expect: record; never dropped or sampled}
     tool_result: {expect: record; never dropped or sampled}
+    # S10 item 3 seed: the stream's level is in-line (severity_text and
+    # detected_level are structured metadata), so per-level bytes come from
+    # the lab, not the volume API. Nothing reads the DEBUG model_stream lines:
+    # expect a level tier routing levels below warn to the cheapest tier,
+    # records excluded by their event.name condition, and the error-pattern
+    # guard keeping the chunks that mention an exception. rate_limited is WARN
+    # and stays hot.
+    model_stream: {expect: level tier (S10 item 3), below warn, error guard kept; unread}
+    rate_limited: {expect: kept (warn, above the tier)}
   content_attributes:
     # Unread and large: cap with a truncation marker, never delete the record
     # that carries them (ADR 0011). tool_parameters is carried twice (the

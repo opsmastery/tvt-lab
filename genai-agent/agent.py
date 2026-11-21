@@ -84,9 +84,12 @@ def filler(min_kb, max_kb):
     return " ".join(words)[:n]
 
 
-def emit_log(event, attrs, body=""):
+SEVERITIES = {"DEBUG": SeverityNumber.DEBUG, "INFO": SeverityNumber.INFO, "WARN": SeverityNumber.WARN}
+
+
+def emit_log(event, attrs, body="", severity="INFO"):
     otel_logger.emit(LogRecord(
-        timestamp=time.time_ns(), severity_number=SeverityNumber.INFO, severity_text="INFO", resource=resource,
+        timestamp=time.time_ns(), severity_number=SEVERITIES[severity], severity_text=severity, resource=resource,
         body=body or event, attributes={"event.name": event, **attrs}))
 
 
@@ -103,7 +106,20 @@ def interaction(session_id, user, seq):
                     "gen_ai.usage.input_tokens": tin, "gen_ai.usage.output_tokens": tout,
                     "gen_ai.input.messages": filler(2, 6), "gen_ai.output.messages": filler(1, 2)}):
                 time.sleep(random.uniform(0.05, 0.3))
-            api_requests.add(1, {"http.response.status_code": random.choice(STATUS_CODES)})
+            # S10 item 3 seed: streamed chunks at DEBUG, in-line levels in one
+            # stream (severity is structured metadata, not a label). Nothing
+            # reads them; about one in 50 mentions an exception, which the
+            # error-pattern guard keeps hot.
+            for chunk in range(random.randint(2, 5)):
+                body = filler(0, 1) or "chunk"
+                if random.random() < 1 / 50:
+                    body = "stream reset by peer, retrying after exception: ConnectionResetError"
+                emit_log("model_stream", {**common, "model": model, "chunk": chunk}, body=body, severity="DEBUG")
+            status = random.choice(STATUS_CODES)
+            api_requests.add(1, {"http.response.status_code": status})
+            if status in (429, 529):
+                emit_log("rate_limited", {**common, "model": model, "status": status},
+                         body=f"model call rate limited ({status}), backing off", severity="WARN")
             tokens.add(tin, {**common, "type": "input", "model": model})
             tokens.add(tout, {**common, "type": "output", "model": model})
             cost.add(dollars, {**common, "model": model})
