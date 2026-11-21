@@ -1,0 +1,107 @@
+# tvt.yaml for scans of the running lab (tvt scripts/lab-pr.sh, the S11
+# rehearsal and the v0.1.0 test plan). Paths are relative to this file, the
+# repo root: the SLO definitions, runbooks and postmortems here, and this
+# checkout as every pipeline's repo. tvt's frozen fixtures keep their own
+# copy (tvt testdata/bench/*/tvt-lab.yaml).
+pricecard: grafana-cloud
+slos:
+  paths: [slos]
+postmortems:
+  paths: [postmortems]
+runbooks:
+  fetch: false
+  mirrors:
+    - url_prefix: https://github.com/Opsmastery-Summit/tvt-lab/blob/main/
+      path: .
+# The lab's agents container (the sweep and finance agents) at its address
+# in this snapshot (the Prometheus query log records only an IP), so the
+# report's query load shows what agents drive (S6 item 2).
+clients:
+  agents:
+    - name: lab-agents
+      addresses: [10.89.0.99]   # on the Mac mini since Nov 17
+# Records (S7 item 2, ADR 0011): the shop's audit log, declared. tvt would
+# also find it by name (component="audit").
+records:
+  streams: ['{app="shop", component="audit"}']
+# The lab's services, as ground truth's slo_coverage.services names them
+# (S6 item 3). No tiers: classification is unchanged.
+ownership:
+  owners:
+    - name: shop
+      metrics: ["shop_.*"]
+      streams: ['{app="shop"}']
+    - name: reconciler
+      streams: ['{app="reconciler"}']
+# The lab's pipelines (ADR 0007, ADR 0009): Prometheus scrape config and
+# Alloy since tvt-lab #20, Fluent Bit for the shop's debug stream since
+# tvt-lab #27, and the OTel Collector carrying the synthetic coding agent
+# since tvt-lab #29. The reconciler stream bypasses all of them. checkout/ holds
+# their files at the capture, for rewrites (S7 item 9) and tvt propose.
+pipelines:
+  - name: prometheus-scrape
+    kind: prometheus
+    repo: github.com/Opsmastery-Summit/tvt-lab
+    branch: main
+    checkout: .
+    files: [prometheus/scrape/lab.yml]
+    handles: ['{job=~"prometheus|loki|grafana|alertmanager"}']
+  - name: alloy-apps
+    kind: alloy
+    repo: github.com/Opsmastery-Summit/tvt-lab
+    branch: main
+    checkout: .
+    files: [alloy/config.alloy]
+    handles: ['{job=~"shop|node"}', '{app="shop", level=~"info|warn|error"}', '{app="shop", component="worker"}']
+    cold: loki.echo.cold   # tvt-lab #35: the cold tier for Alloy stream reroutes
+  - name: fluentbit-shop-debug
+    kind: fluentbit
+    repo: github.com/Opsmastery-Summit/tvt-lab
+    branch: main
+    checkout: .
+    files: [fluent-bit/fluent-bit.yaml]
+    handles: ['{app="shop", component="api", level="debug"}']
+    cold: cold   # tvt-lab #35: the file output aliased cold, match tvt.cold.*
+  - name: otelcol-agent
+    kind: otelcol
+    repo: github.com/Opsmastery-Summit/tvt-lab
+    branch: main
+    checkout: .
+    files: [otelcol/config.yaml]
+    version: 0.165.0   # tvt-lab compose.yaml's otelcol-contrib image
+    cold: file/cold   # tvt-lab #46: the cold tier for the Collector's level tier (S10 item 3)
+    feature_gates: [pkg.ottl.functions.enableExperimental]   # since tvt-lab #40 (transform/lint's ToValidUTF8)
+    handles: ['{job="coding-agent"}', '{service_name="coding-agent"}']
+    telemetry: http://localhost:8888/metrics   # the Collector's own metrics, for the savings ledger (tvt S11 item 4)
+
+# Evidence gaps the lab has on purpose (Jason, Nov 21: fix the two query-log
+# gaps, acknowledge these). tvt check refuses every drop while a gap is open.
+gaps:
+  acknowledge:
+    # Partial coverage only ("covers"): a probe that fails is still a gap.
+    - source: grafana router log
+      match: covers
+      reason: the lab's history starts Nov 8, so the 30-day window fills on Dec 8; remove this entry then
+    - source: prometheus query log
+      match: covers
+      reason: the query log starts Nov 17, when the lab moved to the Mac mini; the window fills on Dec 17; remove this entry then
+    - source: loki query log
+      match: covers
+      reason: the same as the Prometheus query log; remove this entry on Dec 17
+    - source: overflow series
+      reason: seeded (tvt S6 item 5), the span metrics' cardinality limit; their costs are floors
+    - source: assumed references
+      match: "${counter}"
+      reason: seeded (tvt S5 item 2), Shop Overview panel 9 picks its metric from a variable
+    - source: pipelines
+      match: sys.env
+      reason: seeded (tvt S7 item 9), a rewrite tvt can't follow, so it leaves the span metrics alone
+    - source: pipelines
+      match: claimed by several pipelines
+      reason: Prometheus and Alloy both scrape, so both produce up, scrape_*, process_* and go_* series; tvt never drops them
+    - source: pipelines
+      match: app="reconciler"
+      reason: seeded (tvt Sprint 2 item 14), the one stream no pipeline claims
+    - source: pipelines
+      match: sets labels tvt doesn't place a removal around
+      reason: seeded rewrites (instance_pod in Alloy, deployment.environment in the Collector); tvt holds those removals
