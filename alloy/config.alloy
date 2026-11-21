@@ -53,6 +53,21 @@ prometheus.relabel "apps" {
     target_label  = "instance_pod"
     action        = "replace"
   }
+  // tvt:begin alloy-apps scan=3 evidence=1ad0f3081206
+  // 2 unread metrics, 1 unread label, see tvt why; saves 279.50 USD/month
+  rule {
+    source_labels = ["__name__"]
+    regex         = "shop_feature_flag_evaluations_created|shop_feature_flag_evaluations_total"
+    action        = "drop"
+  }
+  rule {
+    source_labels = ["__name__"]
+    regex         = "shop_cart_operations_total"
+    target_label  = "op_kind"
+    replacement   = ""
+    action        = "replace"
+  }
+  // tvt:end
   forward_to = [prometheus.remote_write.prometheus.receiver, prometheus.relabel.cloud.receiver]
 }
 
@@ -128,7 +143,10 @@ loki.source.api "shop" {
 // Where tvt's proposals for Alloy-shipped streams land (ADR 0007:
 // loki.process blocks). Today it passes every line through.
 loki.process "apps" {
-  forward_to = [loki.write.loki.receiver, loki.process.cloud.receiver, loki.process.shop_errors.receiver]
+  // tvt:begin reroute:loki:stream:{app="shop", component="worker", level="debug", service_name="shop"} scan=3 evidence=9d5a29e63e49
+  // tvt:original forward_to = [loki.write.loki.receiver, loki.process.cloud.receiver, loki.process.shop_errors.receiver]
+  forward_to = [loki.process.tvt_hot.receiver, loki.relabel.tvt_cold.receiver]
+  // tvt:end
 }
 
 // The shop's error lines also go to the Collector (tvt S8), whose count
@@ -168,3 +186,23 @@ loki.write "loki" {
     url = "http://loki:3100/loki/api/v1/push"
   }
 }
+// tvt:begin reroute:loki:stream:{app="shop", component="worker", level="debug", service_name="shop"} scan=3 evidence=9d5a29e63e49
+// app=shop, component=worker, level=debug: 1 unread stream, see tvt why; saves 0.15 USD/month
+loki.process "tvt_hot" {
+  stage.match {
+    selector = "{app=\"shop\", component=\"worker\", level=\"debug\"} !~ \"(?i)error|exception|traceback|critical|fatal\""
+    action   = "drop"
+  }
+  forward_to = [loki.write.loki.receiver, loki.process.cloud.receiver, loki.process.shop_errors.receiver]
+}
+
+loki.relabel "tvt_cold" {
+  rule {
+    source_labels = ["app", "component", "level"]
+    separator     = ";"
+    regex         = "shop;worker;debug"
+    action        = "keep"
+  }
+  forward_to = [loki.echo.cold.receiver]
+}
+// tvt:end
