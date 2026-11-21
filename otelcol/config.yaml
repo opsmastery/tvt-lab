@@ -22,6 +22,9 @@
 #   comparison, a regex replace with no where) and one experimental OTTL
 #   function (ToValidUTF8, behind --feature-gates): S16 reports the upgrade
 #   risk, and check fails closed on the experimental one (ADR 0012).
+#
+# S10 seed: file/cold, the cold tier a level tier sends the coding agent's
+# lines below warn to (tvt.yaml pipelines[].cold).
 
 receivers:
   otlp:
@@ -78,6 +81,11 @@ exporters:
   otlp_http/loki:
     endpoint: http://loki:3100/otlp
   nop: {}
+  # The cold tier (tvt S10 item 3, pipelines[].cold): a stand-in for an
+  # archive, as Fluent Bit's file output and Alloy's loki.echo are. Nothing
+  # exports here until tvt's level-tier block adds logs/tvt-tier.
+  file/cold:
+    path: /tmp/cold.json
 
 service:
   pipelines:
