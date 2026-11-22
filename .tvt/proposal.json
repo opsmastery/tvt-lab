@@ -1,59 +1,185 @@
 {
-  "scan": 1,
+  "scan": 3,
   "pipelines": {
     "alloy-apps": [
       {
-        "recommendation": "drop:prom:metric:shop_cart_operations_created",
-        "signal": "prom:metric:shop_cart_operations_created",
+        "recommendation": "drop:prom:metric:shop_feature_flag_evaluations_created",
+        "signal": "prom:metric:shop_feature_flag_evaluations_created",
         "evidence": "89fac66c27bf",
         "owner": "shop",
         "expected": {
           "statements": [
-            "shop_cart_operations_created returns no new samples within an hour of the deploy (it has 6000 active series now)",
+            "shop_feature_flag_evaluations_created returns no new samples within an hour of the deploy (it has 20000 active series now)",
             "no rule, alert or panel goes empty: nothing reads it",
-            "ingest cost falls by about 39.00 USD a month"
+            "ingest cost falls by about 130.00 USD a month"
           ],
           "within_sec": 3600,
           "series_after": 0,
           "empty_readers": [],
-          "monthly_saving": 39
+          "monthly_saving": 130
+        }
+      },
+      {
+        "recommendation": "drop:prom:metric:shop_feature_flag_evaluations_total",
+        "signal": "prom:metric:shop_feature_flag_evaluations_total",
+        "evidence": "89fac66c27bf",
+        "owner": "shop",
+        "expected": {
+          "statements": [
+            "shop_feature_flag_evaluations_total returns no new samples within an hour of the deploy (it has 20000 active series now)",
+            "no rule, alert or panel goes empty: nothing reads it",
+            "ingest cost falls by about 130.00 USD a month"
+          ],
+          "within_sec": 3600,
+          "series_after": 0,
+          "empty_readers": [],
+          "monthly_saving": 130
+        }
+      },
+      {
+        "recommendation": "label_removal:prom:label:shop_cart_operations_total:op_kind",
+        "signal": "prom:label:shop_cart_operations_total:op_kind",
+        "evidence": "e3b0c44298fc",
+        "owner": "shop",
+        "expected": {
+          "statements": [
+            "new shop_cart_operations_total series carry no op_kind label within an hour of the deploy",
+            "shop_cart_operations_total has about 6000 active series after, from 6000",
+            "no rule, alert or panel changes its grouping or goes empty: nothing groups or filters on op_kind",
+            "cost falls by about 19.50 USD a month"
+          ],
+          "within_sec": 3600,
+          "series_after": 6000,
+          "empty_readers": [],
+          "monthly_saving": 19.5
+        }
+      },
+      {
+        "recommendation": "reroute:loki:stream:{app=\"shop\", component=\"worker\", level=\"debug\", service_name=\"shop\"}",
+        "signal": "loki:stream:{app=\"shop\", component=\"worker\", level=\"debug\", service_name=\"shop\"}",
+        "evidence": "e3b0c44298fc",
+        "owner": "shop",
+        "expected": {
+          "statements": [
+            "{app=\"shop\", component=\"worker\", level=\"debug\", service_name=\"shop\"} stops arriving in the hot tier within an hour of the deploy and arrives in cold storage instead",
+            "hot-tier log bytes fall by about 10.6 MiB a day (about 1% of all stream bytes)",
+            "no query, alert or panel goes empty: nothing reads the stream",
+            "lines naming an error, exception, traceback, critical or fatal stay in the hot tier"
+          ],
+          "within_sec": 3600,
+          "series_after": -1,
+          "hot_bytes_per_day_fall": 11108931,
+          "share_pct": 0.5748267993251593,
+          "empty_readers": [],
+          "monthly_saving": 0.1499705685
+        }
+      }
+    ],
+    "fluentbit-shop-debug": [
+      {
+        "recommendation": "reroute:loki:stream:{app=\"shop\", component=\"api\", level=\"debug\", service_name=\"shop\"}",
+        "signal": "loki:stream:{app=\"shop\", component=\"api\", level=\"debug\", service_name=\"shop\"}",
+        "evidence": "e3b0c44298fc",
+        "owner": "shop",
+        "expected": {
+          "statements": [
+            "{app=\"shop\", component=\"api\", level=\"debug\", service_name=\"shop\"} stops arriving in the hot tier within an hour of the deploy and arrives in cold storage instead",
+            "hot-tier log bytes fall by about 1.2 GiB a day (about 68% of all stream bytes)",
+            "no query, alert or panel goes empty: nothing reads the stream",
+            "lines naming an error, exception, traceback, critical or fatal stay in the hot tier"
+          ],
+          "within_sec": 3600,
+          "series_after": -1,
+          "hot_bytes_per_day_fall": 1322648143,
+          "share_pct": 68.439852464117,
+          "empty_readers": [],
+          "monthly_saving": 17.855749930500004
         }
       }
     ],
     "otelcol-agent": [
       {
-        "recommendation": "label_removal:prom:label:coding_agent_token_usage_total:type",
-        "signal": "prom:label:coding_agent_token_usage_total:type",
+        "recommendation": "drop:prom:metric:coding_agent_cost_usage_USD_total",
+        "signal": "prom:metric:coding_agent_cost_usage_USD_total",
+        "evidence": "89fac66c27bf",
+        "expected": {
+          "statements": [
+            "coding_agent_cost_usage_USD_total returns no new samples within an hour of the deploy (it has 34 active series now)",
+            "no rule, alert or panel goes empty: nothing reads it",
+            "ingest cost falls by about 0.22 USD a month"
+          ],
+          "within_sec": 3600,
+          "series_after": 0,
+          "empty_readers": [],
+          "monthly_saving": 0.221
+        }
+      },
+      {
+        "recommendation": "label_removal:prom:label:coding_agent_token_usage_total:session_id",
+        "signal": "prom:label:coding_agent_token_usage_total:session_id",
         "evidence": "e3b0c44298fc",
         "expected": {
           "statements": [
-            "new coding_agent_token_usage_total series carry no type label within an hour of the deploy",
-            "coding_agent_token_usage_total has about 4 active series after, from 8",
-            "no rule, alert or panel changes its grouping or goes empty: nothing groups or filters on type",
+            "new coding_agent_token_usage_total series carry no session_id label within an hour of the deploy",
+            "coding_agent_token_usage_total has about 8 active series after, from 8",
+            "no rule, alert or panel changes its grouping or goes empty: nothing groups or filters on session_id",
             "cost falls by about 0.03 USD a month"
           ],
           "within_sec": 3600,
-          "series_after": 4,
+          "series_after": 8,
           "empty_readers": [],
-          "monthly_saving": 0.026000000000000002
+          "monthly_saving": 0.026
+        }
+      },
+      {
+        "recommendation": "level_tier:loki:stream:{service_name=\"coding-agent\"}",
+        "signal": "loki:stream:{service_name=\"coding-agent\"}",
+        "evidence": "e3b0c44298fc",
+        "expected": {
+          "statements": [
+            "{service_name=\"coding-agent\"}'s debug and info lines stop arriving in the hot tier within an hour of the deploy and arrive in cold storage instead",
+            "its warn, error and fatal lines, its records and lines naming an error stay hot: hot bytes fall by about 42.6 MiB a day",
+            "no query, alert or panel changes: every reader keeps to warn and above"
+          ],
+          "within_sec": 3600,
+          "series_after": -1,
+          "hot_bytes_per_day_fall": 44637703,
+          "empty_readers": [],
+          "monthly_saving": 0.6026089904999999
         }
       }
     ],
     "prometheus-scrape": [
       {
-        "recommendation": "drop:prom:metric:grafana_feature_toggles_info",
-        "signal": "prom:metric:grafana_feature_toggles_info",
+        "recommendation": "drop:prom:metric:loki_request_message_bytes_bucket",
+        "signal": "prom:metric:loki_request_message_bytes_bucket",
         "evidence": "89fac66c27bf",
         "expected": {
           "statements": [
-            "grafana_feature_toggles_info returns no new samples within an hour of the deploy (it has 226 active series now)",
+            "loki_request_message_bytes_bucket returns no new samples within an hour of the deploy (it has 464 active series now)",
             "no rule, alert or panel goes empty: nothing reads it",
-            "ingest cost falls by about 1.47 USD a month"
+            "ingest cost falls by about 3.02 USD a month"
           ],
           "within_sec": 3600,
           "series_after": 0,
           "empty_readers": [],
-          "monthly_saving": 1.4689999999999999
+          "monthly_saving": 3.016
+        }
+      },
+      {
+        "recommendation": "drop:prom:metric:loki_response_message_bytes_bucket",
+        "signal": "prom:metric:loki_response_message_bytes_bucket",
+        "evidence": "89fac66c27bf",
+        "expected": {
+          "statements": [
+            "loki_response_message_bytes_bucket returns no new samples within an hour of the deploy (it has 464 active series now)",
+            "no rule, alert or panel goes empty: nothing reads it",
+            "ingest cost falls by about 3.02 USD a month"
+          ],
+          "within_sec": 3600,
+          "series_after": 0,
+          "empty_readers": [],
+          "monthly_saving": 3.016
         }
       }
     ]
