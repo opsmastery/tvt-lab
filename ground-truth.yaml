@@ -245,6 +245,15 @@ rules:
     kind: alert
     class: hard_keep
     why: alert on shop_error_log_lines_total, which a count connector makes from log lines (tvt S8 item 10)
+  CodingAgentAPIErrors:
+    source: prometheus
+    group: coding-agent
+    kind: alert
+    class: hard_keep
+    why: >
+      alert on coding_agent_api_requests_total by status class
+      (prometheus/rules/coding-agent.yml, the S10 item 1 bucket seed); the
+      e2e suite counted 19 rules against 18 here until it was added
   ShopHighLatency:
     source: prometheus
     group: shop-alerts
