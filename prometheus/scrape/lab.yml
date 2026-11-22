@@ -2,20 +2,32 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+    # tvt:begin interval:prometheus scan=3
+    # job prometheus every 2m instead of 10s (300 metrics, 8 readers); not longer: a reader without a range keeps two samples in the 5m lookback at 2m
+    scrape_interval: 2m
+    # tvt:end
   # shop and node are scraped by Alloy (alloy/config.alloy) since Nov 15,
   # with the same job and instance labels, and remote-written here.
   - job_name: loki
     static_configs:
       - targets: ["loki:3100"]
+    # tvt:begin prometheus-scrape/loki scan=3 evidence=a3a8d853b832
+    # 2 unread metrics, see tvt why; saves 6.03 USD/month
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "loki_request_message_bytes_bucket|loki_response_message_bytes_bucket"
+        action: drop
+    # tvt:end
+    # tvt:begin interval:loki scan=3
+    # job loki every 2m instead of 10s (596 metrics, 6 readers); not longer: a reader without a range keeps two samples in the 5m lookback at 2m
+    scrape_interval: 2m
+    # tvt:end
   - job_name: grafana
     static_configs:
       - targets: ["grafana:3000"]
-    # tvt:begin prometheus-scrape/grafana scan=1 evidence=99b3011ea94f
-    # 1 unread metric, see tvt why; saves 1.47 USD/month
-    metric_relabel_configs:
-      - source_labels: [__name__]
-        regex: "grafana_feature_toggles_info"
-        action: drop
+    # tvt:begin interval:grafana scan=3
+    # job grafana every 2m instead of 10s (557 metrics, 6 readers); not longer: a reader without a range keeps two samples in the 5m lookback at 2m
+    scrape_interval: 2m
     # tvt:end
   # 15s, while its only reader (the Alertmanager Health dashboard) uses a 1m
   # step: tvt S3's lower-resolution seed.

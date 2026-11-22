@@ -58,17 +58,42 @@ processors:
       - 'replace_pattern(log.body, "token=[A-Za-z0-9]+", "token=***")'
       # Experimental (pkg/ottl/xottl): outside OTTL v1's guarantee.
       - 'set(log.body, ToValidUTF8(log.body)) where IsString(log.body)'
-  # tvt:begin otelcol-agent/labels scan=1 evidence=62a780100e02
-  # type unread on 1 metric
+  # tvt:begin otelcol-agent scan=3 evidence=daed6475c878
+  # 1 unread metric, see tvt why; saves 0.22 USD/month
+  filter/tvt:
+    error_mode: ignore
+    metrics:
+      metric:
+        - 'metric.name == "coding_agent_cost_usage_USD_total"'
+        - 'metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+cost[^A-Za-z0-9:]+usage[^A-Za-z0-9:]+USD(?:[^A-Za-z0-9:]+total)?$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$") or metric.unit == "1")'
+        - 'metric.is_monotonic == false and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+cost[^A-Za-z0-9:]+usage[^A-Za-z0-9:]+USD[^A-Za-z0-9:]+total$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$"))'
+        - 'metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+cost[^A-Za-z0-9:]+usage(?:[^A-Za-z0-9:]+total)?$") and metric.unit == "USD"'
+  # tvt:end
+  # tvt:begin otelcol-agent/labels scan=3 evidence=caa3f6f25491
+  # session_id unread on 1 metric
   # delete or bucket the labels, sum over 60s, then delta_to_cumulative (tvt S7 item 8, S10 item 1)
   transform/tvt_aggregate:
     error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
-          - 'delete_matching_keys(datapoint.attributes, "^type$") where (metric.name == "coding_agent_token_usage_total") or (metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token[^A-Za-z0-9:]+usage(?:[^A-Za-z0-9:]+total)?$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$") or metric.unit == "1")) or (metric.is_monotonic == false and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token[^A-Za-z0-9:]+usage[^A-Za-z0-9:]+total$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$"))) or (metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token(?:[^A-Za-z0-9:]+total)?$") and metric.unit == "usage")'
+          - 'delete_matching_keys(datapoint.attributes, "^session[^A-Za-z0-9:]+id$") where (metric.name == "coding_agent_token_usage_total") or (metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token[^A-Za-z0-9:]+usage(?:[^A-Za-z0-9:]+total)?$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$") or metric.unit == "1")) or (metric.is_monotonic == false and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token[^A-Za-z0-9:]+usage[^A-Za-z0-9:]+total$") and (metric.unit == "" or IsMatch(metric.unit, "^[{].*[}]$"))) or (metric.is_monotonic == true and IsMatch(metric.name, "^coding[^A-Za-z0-9:]+agent[^A-Za-z0-9:]+token(?:[^A-Za-z0-9:]+total)?$") and metric.unit == "usage")'
   interval/tvt:
     interval: 60s
+  # tvt:end
+  # tvt:begin tier:otelcol-agent scan=3 evidence=f28f945cb777
+  # 1 stream whose lines below warn nothing reads, see tvt why; saves 0.60 USD/month
+  # lines below warn leave the hot tier for file/cold; the error pattern and records stay (tvt S10 item 3)
+  filter/tvt-tier-hot:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'resource.attributes["service.name"] == "coding-agent" and log.severity_number > 0 and log.severity_number < 13 and IsString(log.body) and not IsMatch(log.body, "(?i)error|exception|traceback|critical|fatal") and not (log.attributes["event.name"] == "tool_result") and not (log.attributes["event.name"] == "tool_decision")'
+  filter/tvt-tier-cold:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'not (resource.attributes["service.name"] == "coding-agent" and log.severity_number > 0 and log.severity_number < 13 and IsString(log.body) and not IsMatch(log.body, "(?i)error|exception|traceback|critical|fatal") and not (log.attributes["event.name"] == "tool_result") and not (log.attributes["event.name"] == "tool_decision"))'
   # tvt:end
 
 connectors:
@@ -123,16 +148,22 @@ service:
       exporters: [nop]
     metrics:
       receivers: [otlp]
-      processors: [attributes/env, transform/tvt_aggregate, interval/tvt, delta_to_cumulative, batch]
+      processors: [filter/tvt, attributes/env, transform/tvt_aggregate, interval/tvt, delta_to_cumulative, batch]
       exporters: [prometheus_remote_write]
     logs:
       receivers: [otlp]
-      processors: [transform/lint, batch]
+      processors: [filter/tvt-tier-hot, transform/lint, batch]
       exporters: [otlp_http/loki]
     logs/shop-errors:
       receivers: [otlp/shop]
       exporters: [count/shop_errors]
     metrics/shop-errors:
       receivers: [count/shop_errors]
-      processors: [transform/tvt_aggregate, interval/tvt, delta_to_cumulative, batch]
+      processors: [filter/tvt, transform/tvt_aggregate, interval/tvt, delta_to_cumulative, batch]
       exporters: [prometheus_remote_write]
+    # tvt:begin tier:otelcol-agent scan=3 evidence=f28f945cb777
+    logs/tvt-tier:
+      receivers: [otlp]
+      processors: [filter/tvt-tier-cold, transform/lint, batch]
+      exporters: [file/cold]
+    # tvt:end
