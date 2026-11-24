@@ -3,3 +3,5 @@
 __pycache__/
 lab-logs/
 grafana/dashboards/s9-reader.json
+# local working notes for coding sessions, kept out of the repo
+CLAUDE.md
