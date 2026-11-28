@@ -41,14 +41,14 @@ ownership:
 pipelines:
   - name: prometheus-scrape
     kind: prometheus
-    repo: github.com/Opsmastery-Summit/tvt-lab
+    repo: github.com/opsmastery/tvt-lab
     branch: main
     checkout: .
     files: [prometheus/scrape/lab.yml]
     handles: ['{job=~"prometheus|loki|grafana|alertmanager"}']
   - name: alloy-apps
     kind: alloy
-    repo: github.com/Opsmastery-Summit/tvt-lab
+    repo: github.com/opsmastery/tvt-lab
     branch: main
     checkout: .
     files: [alloy/config.alloy]
@@ -56,7 +56,7 @@ pipelines:
     cold: loki.echo.cold   # tvt-lab #35: the cold tier for Alloy stream reroutes
   - name: fluentbit-shop-debug
     kind: fluentbit
-    repo: github.com/Opsmastery-Summit/tvt-lab
+    repo: github.com/opsmastery/tvt-lab
     branch: main
     checkout: .
     files: [fluent-bit/fluent-bit.yaml]
@@ -64,7 +64,7 @@ pipelines:
     cold: cold   # tvt-lab #35: the file output aliased cold, match tvt.cold.*
   - name: otelcol-agent
     kind: otelcol
-    repo: github.com/Opsmastery-Summit/tvt-lab
+    repo: github.com/opsmastery/tvt-lab
     branch: main
     checkout: .
     files: [otelcol/config.yaml]
